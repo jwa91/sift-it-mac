@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## [0.1.0] — 2026-10-21
 
 The first version: a menu bar app whose shortcut (⌃⇧Space) opens one search bar over sift-it's engine.
 
