@@ -13,22 +13,22 @@ socket.
 
 ## Setup
 
-Sift It needs [sift-it](https://github.com/jwa91/sift-it) (Apple silicon, macOS 14 or later):
+Apple silicon, macOS 14 or later:
 
 ```sh
-brew install jwa91/tap/sift-it
+brew install jwa91/tap/sift-it-mac
+```
+
+That brings [sift-it](https://github.com/jwa91/sift-it) with it, which does the indexing and the searching. Set it up
+once:
+
+```sh
 sift-it model download
 sift-it folders add ~/Documents
 sift-it service install
 ```
 
-Then build and install the app:
-
-```sh
-make install
-```
-
-It lives in the menu bar. **⌃⇧Space** opens the search, and Settings changes the shortcut.
+Then open Sift It from Applications. It lives in the menu bar. **⌃⇧Space** opens the search, and Settings changes the shortcut.
 
 ## Searching
 
@@ -94,7 +94,12 @@ make run       # build and open it
 make install   # build and put it in /Applications
 make check     # swift format lint, build with warnings as errors, tests
 make icon      # redraw Resources/AppIcon.icns
+make snapshot  # what a release makes, in dist/, unpublished
 ```
+
+`make release VERSION=X.Y.Z` signs, notarizes and publishes a release, and updates the cask in
+[jwa91/homebrew-tap](https://github.com/jwa91/homebrew-tap). What the releasing Mac needs is in the header of
+`scripts/codesign.sh`.
 
 `SiftItKit` holds the protocol and the socket and is tested on its own (`swift test`), against a fake engine on a
 real socket. `SiftIt` is the app.

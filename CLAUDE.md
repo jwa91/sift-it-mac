@@ -25,7 +25,8 @@ Sources/SiftItKit/   the protocol (Protocol.swift), the socket (EngineConnection
 Sources/SiftIt/      the app: App, Engine (the connection kept up), SearchController (the panel), SearchPanel,
                      ResultsList, Preview, Playback, Images, Actions, Hotkey, StatusItem, Settings, Permissions
 Tests/               SiftItKit's tests, with a fake engine on a real socket
-scripts/             bundle.sh (the .app), make-icon.swift (the icon)
+scripts/             bundle.sh (the .app), codesign.sh (Developer ID, notarizing, stapling), release.sh (the GitHub
+                     release and the cask), make-icon.swift (the icon)
 ```
 
 ## Working on it
@@ -37,3 +38,11 @@ scripts/             bundle.sh (the .app), make-icon.swift (the icon)
   its round trip. `footprint -p $(pgrep -x SiftIt)` shows memory: about 19 MB after launch.
 - An ad hoc signed build is a new app to macOS's privacy settings each time: Accessibility has to be allowed again
   after a rebuild.
+
+## Releasing
+
+As sift-it does, from the releasing Mac: bump `CFBundleShortVersionString` in Resources/Info.plist, give CHANGELOG.md a
+`## [X.Y.Z] — date` section, commit, tag `vX.Y.Z` and push both, then `make release VERSION=X.Y.Z`. It checks first,
+signs with the Developer ID and notarizes with the keychain's notarytool profile (scripts/codesign.sh), staples, and
+publishes the zip and `Casks/sift-it-mac.rb` with the gh login. `make snapshot` makes the same in dist/ without
+publishing; CI's manual Release workflow runs it. The cask depends on `jwa91/tap/sift-it`.

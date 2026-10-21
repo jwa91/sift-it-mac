@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened runtime, no sandbox: Sift It runs sift-it and reads the files it finds.
+  Apple Events: `sift-it open` drives QuickTime Player, Preview and System Events with osascript, and macOS holds Sift
+  It responsible for those events, so its hardened runtime has to allow them.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
+</dict>
+</plist>

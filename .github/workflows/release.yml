@@ -1,0 +1,50 @@
+name: Release
+
+# Manual-only, and it doesn't publish: a cask must be signed and notarized, and the Developer ID certificate and
+# notarytool login live in the releasing Mac's keychain, not in CI. Local releases via `make release VERSION=X.Y.Z`
+# are the canonical path. This builds what a release would and checks it.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+
+      - name: Run checks
+        run: make check
+
+  snapshot:
+    name: Snapshot
+    runs-on: macos-26
+    timeout-minutes: 20
+    needs: verify
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          # The build number is the commit count.
+          fetch-depth: 0
+
+      # Everything a release makes (signed ad hoc here), without publishing it.
+      - name: Build the release archive and cask
+        run: make snapshot
+
+      - name: Smoke the archive
+        run: |
+          set -eu
+          cd dist
+          shasum -a 256 -c checksums.txt
+          mkdir smoke && ditto -x -k sift-it-mac_*_darwin_arm64.zip smoke
+          app="smoke/Sift It.app"
+          codesign --verify --strict --deep "$app"
+          lipo -archs "$app/Contents/MacOS/SiftIt" | grep -qw arm64
+          plutil -lint "$app/Contents/Info.plist"
+          test -f "$app/Contents/Resources/AppIcon.icns"
