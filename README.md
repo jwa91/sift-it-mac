@@ -28,7 +28,7 @@ Then build and install the app:
 make install
 ```
 
-It lives in the menu bar. **⇧⌘Space** opens the search, and Settings changes the shortcut.
+It lives in the menu bar. **⌃⇧Space** opens the search, and Settings changes the shortcut.
 
 ## Searching
 

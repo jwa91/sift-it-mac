@@ -12,8 +12,10 @@ struct Shortcut: Codable, Equatable {
     /// The key as typed, for showing: "Space", "K".
     var key: String
 
+    /// ⌃⇧Space: the Space shortcuts others take are ⌘ (Spotlight, Raycast), ⌥ (Raycast, ChatGPT), ⇧⌘ (1Password's Quick
+    /// Access), ⌃⌘ (Emoji & Symbols), ⌃ and ⌃⌥ (input sources) and ⌥⌘ (Finder's search window).
     static let standard = Shortcut(
-        keyCode: UInt32(kVK_Space), modifiers: NSEvent.ModifierFlags([.shift, .command]).rawValue, key: "Space")
+        keyCode: UInt32(kVK_Space), modifiers: NSEvent.ModifierFlags([.control, .shift]).rawValue, key: "Space")
 
     private static let defaultsKey = "shortcut"
 
@@ -27,7 +29,7 @@ struct Shortcut: Codable, Equatable {
 
     var flags: NSEvent.ModifierFlags { NSEvent.ModifierFlags(rawValue: modifiers) }
 
-    /// "⇧⌘Space", in the order macOS's menus use.
+    /// "⌃⇧Space", in the order macOS's menus use.
     var display: String {
         var text = ""
         if flags.contains(.control) { text += "⌃" }

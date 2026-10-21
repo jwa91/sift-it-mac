@@ -2,7 +2,7 @@
 
 ## 0.1.0 (unreleased)
 
-The first version: a menu bar app whose shortcut (⇧⌘Space) opens one search bar over sift-it's engine.
+The first version: a menu bar app whose shortcut (⌃⇧Space) opens one search bar over sift-it's engine.
 
 - Results as you type: by words at once, by meaning when typing pauses. Strong matches first, weaker ones under a
   heading.
