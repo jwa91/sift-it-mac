@@ -72,6 +72,12 @@ final class Engine {
         return status
     }
 
+    /// Ends the engine when it's running; one that isn't isn't started for it.
+    func stopIfRunning() async {
+        guard let socket = await connected(starting: false) else { return }
+        _ = try? await socket.request(.stop, as: Done.self)
+    }
+
     /// Sends a request on the connection, connecting first when there is none.
     func ask<Reply: Decodable & Sendable>(_ request: Request, as _: Reply.Type = Reply.self) async throws -> Reply {
         guard let socket = await connected() else {
@@ -244,23 +250,63 @@ enum Run {
         }
     }
 
-    /// Runs a program to its end; what it printed, and whether it succeeded.
-    static func output(_ executable: URL, _ arguments: [String]) async -> (output: String, ok: Bool) {
+    /// What a program printed, and whether it succeeded.
+    struct Ran: Sendable {
+        let output: String
+        let errors: String
+        let ok: Bool
+
+        /// Its last complaint, to show.
+        var problem: String {
+            errors.split(separator: "\n").last.map(String.init) ?? "it stopped"
+        }
+    }
+
+    /// Runs a program to its end. Each line of its output also goes to `line` as it comes, on the main thread. Its
+    /// output and its errors are read on threads of their own, so a full pipe never holds it up.
+    static func run(
+        _ executable: URL, _ arguments: [String], line: (@MainActor @Sendable (String) -> Void)? = nil
+    ) async -> Ran {
         await withCheckedContinuation { continuation in
             let process = Process()
-            let pipe = Pipe()
+            let output = Pipe()
+            let errors = Pipe()
             process.executableURL = executable
             process.arguments = arguments
-            process.standardOutput = pipe
-            process.standardError = pipe
-            process.terminationHandler = { process in
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                continuation.resume(returning: (String(decoding: data, as: UTF8.self), process.terminationStatus == 0))
-            }
+            process.standardOutput = output
+            process.standardError = errors
             do {
                 try process.run()
             } catch {
-                continuation.resume(returning: (error.localizedDescription, false))
+                continuation.resume(returning: Ran(output: "", errors: error.localizedDescription, ok: false))
+                return
+            }
+            let read = DispatchGroup()
+            nonisolated(unsafe) var said = Data()
+            nonisolated(unsafe) var complained = Data()
+            DispatchQueue.global(qos: .utility).async(group: read) {
+                var partial = Data()
+                while case let chunk = output.fileHandleForReading.availableData, !chunk.isEmpty {
+                    said.append(chunk)
+                    guard let line else { continue }
+                    partial.append(chunk)
+                    while let newline = partial.firstIndex(of: 0x0A) {
+                        let text = String(decoding: partial[partial.startIndex..<newline], as: UTF8.self)
+                        partial = Data(partial[(newline + 1)...])
+                        DispatchQueue.main.async { MainActor.assumeIsolated { line(text) } }
+                    }
+                }
+            }
+            DispatchQueue.global(qos: .utility).async(group: read) {
+                complained = errors.fileHandleForReading.readDataToEndOfFile()
+            }
+            read.notify(queue: .global(qos: .utility)) {
+                process.waitUntilExit()
+                continuation.resume(
+                    returning: Ran(
+                        output: String(decoding: said, as: UTF8.self),
+                        errors: String(decoding: complained, as: UTF8.self),
+                        ok: process.terminationStatus == 0))
             }
         }
     }

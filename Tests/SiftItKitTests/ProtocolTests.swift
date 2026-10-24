@@ -47,6 +47,8 @@ let videoHit = """
     #expect(
         String(decoding: Request.folders(.add, paths: ["/a/b"]).line(id: 4), as: UTF8.self)
             == #"{"action":"add","id":4,"op":"folders","paths":["/a/b"]}"#)
+    #expect(String(decoding: Request.stop.line(id: 5), as: UTF8.self) == #"{"id":5,"op":"stop"}"#)
+    #expect(String(decoding: Request.unload.line(id: 6), as: UTF8.self) == #"{"id":6,"op":"unload"}"#)
 }
 
 @Test func eventsRead() {

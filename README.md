@@ -1,4 +1,4 @@
-# Sift It for Mac
+# Sift It
 
 **Sift It: the blazingly fast document searcher for your Mac, built in Rust.**
 
@@ -8,27 +8,21 @@ video where it happens. Recordings and videos play right there, from the moment 
 your Mac, with Google DeepMind's EmbeddingGemma 2.
 
 This app is a thin native front end, in Swift and AppKit. The work happens in
-[sift-it](https://github.com/jwa91/sift-it), the Rust engine and background indexer. The app speaks to it over its
-socket.
+[sift-it](https://github.com/jwa91/sift-it), the Rust engine and background indexer, which the app ships with.
 
-## Setup
+## Install
 
 Apple silicon, macOS 14 or later:
 
 ```sh
-brew install jwa91/tap/sift-it-mac
+brew install jwa91/tap/sift-it
 ```
 
-That brings [sift-it](https://github.com/jwa91/sift-it) with it, which does the indexing and the searching. Set it up
-once:
+Open Sift It from Applications. A welcome window downloads its model (1.6 GB, once), asks which folders to search,
+and starts indexing them in the background. After that it lives in the menu bar, and **⌃⇧Space** opens the search
+from any app.
 
-```sh
-sift-it model download
-sift-it folders add ~/Documents
-sift-it service install
-```
-
-Then open Sift It from Applications. It lives in the menu bar. **⌃⇧Space** opens the search, and Settings changes the shortcut.
+The same install puts the `sift-it` command on your path, for the terminal and the Raycast extension.
 
 ## Searching
 
@@ -53,6 +47,9 @@ around the moment, and the passage, page or transcript with your words in bold.
 
 ## Permissions
 
+macOS asks before your Documents, Desktop and Downloads are read, twice: for Sift It, which shows previews (the
+welcome window asks when it counts those folders), and for sift-it, its indexer, when indexing starts.
+
 Opening a result at its place goes through `sift-it open`. That command drives other apps, and macOS counts it as
 Sift It's doing:
 
@@ -66,6 +63,9 @@ The shortcut needs no permission. It's a system hot key, which costs nothing unt
 
 ## How it's built
 
+- **It ships with its engine.** The app carries a sift-it release (`ENGINE_VERSION`) in `Contents/Helpers`, its
+  binaries signed and notarized as sift-it released them. App and engine are a pair that's tested together, and the
+  cask links the `sift-it` command from there.
 - **The engine's socket.** The app talks to the engine directly, in JSON lines over `engine.sock` in the data folder
   ([protocol](https://github.com/jwa91/sift-it/blob/main/docs/protocol.md)). Lines are read on a thread of their
   own, and replies find their request by id. When the engine isn't running, the app starts it as the CLI would: via
@@ -97,8 +97,9 @@ make icon      # redraw Resources/AppIcon.icns
 make snapshot  # what a release makes, in dist/, unpublished
 ```
 
-`make release VERSION=X.Y.Z` signs, notarizes and publishes a release, and updates the cask in
-[jwa91/homebrew-tap](https://github.com/jwa91/homebrew-tap). What the releasing Mac needs is in the header of
+`make release VERSION=X.Y.Z` signs, notarizes and publishes a release, and updates the `sift-it` cask in
+[jwa91/homebrew-tap](https://github.com/jwa91/homebrew-tap). The sift-it it ships with is the version in
+`ENGINE_VERSION`; `scripts/fetch-engine.sh` fetches it and checks it. What the releasing Mac needs is in the header of
 `scripts/codesign.sh`.
 
 `SiftItKit` holds the protocol and the socket and is tested on its own (`swift test`), against a fake engine on a

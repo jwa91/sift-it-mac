@@ -51,11 +51,18 @@ public enum Places {
     /// Where Homebrew puts sift-it, on Apple silicon and on Intel.
     public static let cliCandidates = ["/opt/homebrew/bin/sift-it", "/usr/local/bin/sift-it"]
 
-    /// sift-it's command-line tool: the one set in the settings, else where Homebrew puts it, else on the PATH.
-    public static func cli(preferred: String? = nil) -> URL? {
+    /// The sift-it the app ships with, in its bundle.
+    public static var bundledCLI: URL {
+        Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/sift-it")
+    }
+
+    /// sift-it's command-line tool: the one set in the settings, else the one the app ships with, else where Homebrew
+    /// puts it, else on the PATH.
+    public static func cli(preferred: String? = nil, bundled: URL = bundledCLI) -> URL? {
         let manager = FileManager.default
         var candidates: [String] = []
         if let preferred, !preferred.isEmpty { candidates.append((preferred as NSString).expandingTildeInPath) }
+        candidates.append(bundled.path)
         candidates += cliCandidates
         let path = ProcessInfo.processInfo.environment["PATH"] ?? ""
         candidates += path.split(separator: ":").map { "\($0)/sift-it" }

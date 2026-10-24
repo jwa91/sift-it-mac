@@ -13,6 +13,8 @@ final class StatusItem: NSObject, NSMenuDelegate {
     private var menuIsOpen = false
     var openSearch: () -> Void = {}
     var openSettings: () -> Void = {}
+    /// Starts indexing in the background.
+    var startIndexing: () -> Void = {}
 
     init(engine: Engine) {
         self.engine = engine
@@ -158,10 +160,7 @@ final class StatusItem: NSObject, NSMenuDelegate {
         if let pid = engine.indexer?.pid { kill(pid, SIGUSR1) }
     }
 
-    @objc private func installIndexer() {
-        guard let cli = engine.cli else { return }
-        Task { _ = await Run.output(cli, ["service", "install"]) }
-    }
+    @objc private func installIndexer() { startIndexing() }
 
     @objc private func copyInstall() {
         NSPasteboard.general.clearContents()

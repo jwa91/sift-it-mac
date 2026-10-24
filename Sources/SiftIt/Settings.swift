@@ -1,5 +1,5 @@
-// The settings: the shortcut, opening at login, how to search, and the folders to index. The window and its views
-// exist only while it's open.
+// The settings: the shortcut, opening at login, how to search, the folders to index, and indexing in the background.
+// The window and its views exist only while it's open.
 
 import ServiceManagement
 import SiftItKit
@@ -8,18 +8,25 @@ import SwiftUI
 @MainActor
 final class SettingsWindow: NSObject, NSWindowDelegate {
     private let engine: Engine
+    private let setup: Setup
     private let hotkey: Hotkey
     private var window: NSWindow?
+    /// Opens the welcome window again.
+    var openWelcome: () -> Void = {}
 
-    init(engine: Engine, hotkey: Hotkey) {
+    init(engine: Engine, setup: Setup, hotkey: Hotkey) {
         self.engine = engine
+        self.setup = setup
         self.hotkey = hotkey
     }
 
     func show() {
         if window == nil {
-            let window = NSWindow(
-                contentViewController: NSHostingController(rootView: SettingsView(engine: engine, hotkey: hotkey)))
+            let view = SettingsView(engine: engine, setup: setup, hotkey: hotkey) { [weak self] in
+                self?.window?.close()
+                self?.openWelcome()
+            }
+            let window = NSWindow(contentViewController: NSHostingController(rootView: view))
             window.title = "Sift It"
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false
@@ -38,7 +45,9 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
 
 private struct SettingsView: View {
     let engine: Engine
+    let setup: Setup
     let hotkey: Hotkey
+    let openWelcome: () -> Void
 
     var body: some View {
         TabView {
@@ -46,7 +55,7 @@ private struct SettingsView: View {
                 .tabItem { Label("General", systemImage: "gearshape") }
             FolderSettings(engine: engine)
                 .tabItem { Label("Folders", systemImage: "folder") }
-            IndexSettings(engine: engine)
+            IndexSettings(engine: engine, setup: setup, openWelcome: openWelcome)
                 .tabItem { Label("Index", systemImage: "chart.bar.doc.horizontal") }
         }
         .frame(width: 500, height: 380)
@@ -95,7 +104,7 @@ private struct GeneralSettings: View {
 }
 
 /// A button that shows the shortcut, and takes the next one typed after a click.
-private struct ShortcutRecorder: NSViewRepresentable {
+struct ShortcutRecorder: NSViewRepresentable {
     let hotkey: Hotkey
 
     func makeNSView(context: Context) -> RecorderButton {
@@ -105,7 +114,7 @@ private struct ShortcutRecorder: NSViewRepresentable {
     func updateNSView(_ view: RecorderButton, context: Context) {}
 }
 
-private final class RecorderButton: NSButton {
+final class RecorderButton: NSButton {
     private let hotkey: Hotkey
     private var recording = false {
         didSet { title = recording ? "Type a shortcut…" : Shortcut.saved.display }
@@ -273,7 +282,9 @@ private struct FolderList: View {
 
 private struct IndexSettings: View {
     let engine: Engine
-    @State private var downloading = false
+    @Bindable var setup: Setup
+    let openWelcome: () -> Void
+    @State private var problem: String?
 
     var body: some View {
         Form {
@@ -286,17 +297,44 @@ private struct IndexSettings: View {
                     LabeledContent("On disk", value: Format.bytes(stats.bytes))
                 }
             }
-            if engine.meaning == .unavailable, engine.cli != nil {
-                Section {
-                    Button(downloading ? "Downloading the model…" : "Download the Model (1.6 GB)") {
-                        download()
-                    }
-                    .disabled(downloading)
+            Section {
+                Toggle(
+                    isOn: Binding(
+                        get: { setup.inBackground }, set: { on in change { try await setup.indexInBackground(on) } })
+                ) {
+                    Text("Keep the index up to date in the background")
+                    Text("From login on, new and changed files are indexed as they come.")
+                }
+                switch setup.model {
+                case .missing, .failed:
+                    Button("Download the Model (1.6 GB)") { setup.downloadModel() }
+                case .downloading(let done, let total):
+                    ProgressView(value: Double(done), total: Double(max(total, 1))) { Text("Downloading the model…") }
+                default:
+                    EmptyView()
+                }
+                Button("Set Up Again…", action: openWelcome)
+                if let problem {
+                    Text(problem).foregroundStyle(.secondary)
                 }
             }
         }
         .formStyle(.grouped)
-        .task { await engine.refreshStatus() }
+        .task {
+            await engine.refreshStatus()
+            await setup.look()
+        }
+    }
+
+    private func change(_ work: @escaping () async throws -> Void) {
+        Task {
+            do {
+                try await work()
+                problem = nil
+            } catch {
+                problem = error.localizedDescription
+            }
+        }
     }
 
     private var engineState: String {
@@ -323,13 +361,4 @@ private struct IndexSettings: View {
             .joined(separator: ", ")
     }
 
-    private func download() {
-        guard let cli = engine.cli else { return }
-        downloading = true
-        Task {
-            _ = await Run.output(cli, ["model", "download"])
-            downloading = false
-            await engine.refreshStatus()
-        }
-    }
 }

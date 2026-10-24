@@ -37,6 +37,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotkey: Hotkey!
     private var statusItem: StatusItem!
     private var settings: SettingsWindow!
+    private var setup: Setup!
+    private var welcome: WelcomeWindow!
 
     /// Everything is made before launching finishes: a `sift-it://` link that launched the app comes in before
     /// `applicationDidFinishLaunching`. The panel is made now too, so the first shortcut shows it at once.
@@ -44,15 +46,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         search = SearchController(engine: engine)
         hotkey = Hotkey { [weak self] in self?.search.toggle() }
         hotkey.register(.saved)
-        settings = SettingsWindow(engine: engine, hotkey: hotkey)
+        setup = Setup(engine: engine)
+        welcome = WelcomeWindow(setup: setup, hotkey: hotkey)
+        welcome.onFinish = { [weak self] in self?.search.show() }
+        settings = SettingsWindow(engine: engine, setup: setup, hotkey: hotkey)
+        settings.openWelcome = { [weak self] in self?.welcome.show() }
         statusItem = StatusItem(engine: engine)
         statusItem.openSearch = { [weak self] in self?.search.show() }
         statusItem.openSettings = { [weak self] in self?.settings.show() }
+        statusItem.startIndexing = { [weak self] in Task { try? await self?.setup.indexInBackground(true) } }
         search.openSettings = { [weak self] in self?.settings.show() }
         engine.watch()
     }
 
-    /// `sift-it://search?q=…` opens the search with that query, `sift-it://settings` the settings.
+    /// The first time, the welcome window sets Sift It up. After that, launching puts back what an upgrade took away.
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        Task {
+            if await setup.needsWelcome() {
+                welcome.show()
+            } else {
+                await setup.restoreBackground()
+            }
+        }
+    }
+
+    /// `sift-it://search?q=…` opens the search with that query, `sift-it://settings` the settings, and
+    /// `sift-it://welcome` the welcome window.
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls where url.scheme == "sift-it" {
             switch url.host() {
@@ -62,6 +81,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 search.show(query: query ?? "")
             case "settings":
                 settings.show()
+            case "welcome":
+                welcome.show()
             default:
                 break
             }

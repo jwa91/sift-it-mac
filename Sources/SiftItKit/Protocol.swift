@@ -121,6 +121,11 @@ public enum Request: Sendable, Equatable {
     case config(key: String?, value: String?)
     /// The folders indexed, changed first when there's an action.
     case folders(FolderAction?, paths: [String])
+    /// Lets the model and the vectors go, until a search by meaning needs them: after the model is downloaded, the
+    /// next search loads it.
+    case unload
+    /// Ends the engine.
+    case stop
 
     /// The request as a line, without its newline.
     public func line(id: Int) -> Data {
@@ -146,6 +151,10 @@ public enum Request: Sendable, Equatable {
             fields["op"] = "folders"
             if let action { fields["action"] = action.rawValue }
             if !paths.isEmpty { fields["paths"] = paths }
+        case .unload:
+            fields["op"] = "unload"
+        case .stop:
+            fields["op"] = "stop"
         }
         // Only strings, numbers and arrays of them: this can't fail.
         return try! JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys, .withoutEscapingSlashes])
@@ -340,6 +349,11 @@ public struct IndexerStatus: Decodable, Sendable, Equatable {
 public struct Folders: Decodable, Sendable, Equatable {
     public let folders: [String]
     public let excluded: [String]
+}
+
+/// It's done.
+public struct Done: Decodable, Sendable {
+    public let ok: Bool
 }
 
 /// A setting's value.
