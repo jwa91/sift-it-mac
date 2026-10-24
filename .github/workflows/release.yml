@@ -48,3 +48,5 @@ jobs:
           lipo -archs "$app/Contents/MacOS/SiftIt" | grep -qw arm64
           plutil -lint "$app/Contents/Info.plist"
           test -f "$app/Contents/Resources/AppIcon.icns"
+          test "$("$app/Contents/Helpers/sift-it" --version)" = "sift-it $(cat ../ENGINE_VERSION)"
+          test -x "$app/Contents/Helpers/sift-it-transcribe"
