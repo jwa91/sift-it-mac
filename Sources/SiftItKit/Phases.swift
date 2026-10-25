@@ -21,7 +21,7 @@ public enum Phase: Int, CaseIterable, Comparable, Sendable {
         switch self {
         case .exact: "Find files by their name and exact words, text in screenshots and scans included."
         case .embeddings: "Find documents, photos, sounds and video scenes by what they mean."
-        case .transcribed: "Find what's said in recordings and videos."
+        case .transcribed: "Find what's said in audio and video."
         }
     }
 

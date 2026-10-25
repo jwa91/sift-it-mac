@@ -127,7 +127,7 @@ let indexerLine = """
     #expect(Format.shortPath("/Users/me/Videos/a.mp4", home: "/Users/me") == "~/Videos/a.mp4")
     #expect(Format.folder(of: "/Users/me/Videos/a.mp4", home: "/Users/me") == "~/Videos")
     #expect(Format.kindCount(.init(rawValue: "document"), 900) == "900 documents")
-    #expect(Format.kindCount(.init(rawValue: "audio"), 1) == "1 recording")
+    #expect(Format.kindCount(.init(rawValue: "audio"), 1) == "1 audio file")
     #expect(Format.shortPath("/Users/meg/a", home: "/Users/me") == "/Users/meg/a")
     #expect(Format.bytes(4_115_376) == "3.9 MB")
     #expect(Format.duration(42) == "under a minute")

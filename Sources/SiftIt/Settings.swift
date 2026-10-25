@@ -218,7 +218,7 @@ private struct PermissionSettings: View {
             LabeledContent {
                 Button("Automation Settings…") { Permissions.openAutomationSettings() }
             } label: {
-                Text("Recordings and videos at the moment")
+                Text("Audio and video at the moment")
                 Text("macOS asks once whether Sift It may control QuickTime Player, Preview and System Events.")
             }
         }

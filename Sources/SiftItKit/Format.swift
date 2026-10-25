@@ -43,7 +43,7 @@ public enum Format {
         return label
     }
 
-    /// The stretch a recording's match covers, "0:50–1:18", or its moment.
+    /// The stretch an audio file's or video's match covers, "0:50–1:18", or its moment.
     public static func span(of hit: Hit) -> String? {
         guard let start = hit.loc else { return nil }
         guard let end = hit.locEnd, end > start else { return timestamp(start) }
@@ -52,7 +52,7 @@ public enum Format {
 
     public static let kindNames: [Kind: String] = [
         .plaintext: "Text", .document: "Document", .structured: "Data", .image: "Picture",
-        .screenshot: "Screenshot", .audio: "Recording", .video: "Video", .code: "Code",
+        .screenshot: "Screenshot", .audio: "Audio", .video: "Video", .code: "Code",
     ]
 
     public static func kindName(_ kind: Kind) -> String {
@@ -68,7 +68,7 @@ public enum Format {
     private static let kindCounts: [Kind: (String, String)] = [
         .plaintext: ("text file", "text files"), .document: ("document", "documents"),
         .structured: ("data file", "data files"), .image: ("picture", "pictures"),
-        .screenshot: ("screenshot", "screenshots"), .audio: ("recording", "recordings"),
+        .screenshot: ("screenshot", "screenshots"), .audio: ("audio file", "audio files"),
         .video: ("video", "videos"), .code: ("code file", "code files"),
     ]
 
