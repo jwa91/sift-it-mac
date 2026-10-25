@@ -6,24 +6,6 @@ import Observation
 import ServiceManagement
 import SiftItKit
 
-/// A folder, and what indexing it takes (`sift-it estimate --json`).
-struct Estimate: Decodable, Sendable, Equatable {
-    let folder: String
-    let files: Int
-    let seconds: Double
-    let speechSeconds: Double
-    /// macOS didn't let it be read (yet).
-    let unreadable: Bool
-
-    enum CodingKeys: String, CodingKey {
-        case folder, files, seconds, unreadable
-        case speechSeconds = "speech_seconds"
-    }
-
-    /// The first pass, all of it.
-    var duration: Double { seconds + speechSeconds }
-}
-
 @MainActor @Observable
 final class Setup {
     enum Model: Equatable {
@@ -39,13 +21,17 @@ final class Setup {
     private(set) var indexed: [String] = []
     /// What indexing each folder takes, by path, once counted.
     private(set) var estimates: [String: Estimate] = [:]
+    /// The folders being counted: it takes a while for a big one, which has each recording, video and PDF looked into.
+    private(set) var counting: Set<String> = []
     /// Whether sift-it's background indexer is installed and running.
     private(set) var inBackground = false
 
     @ObservationIgnored private let engine: Engine
     @ObservationIgnored private var downloading = false
-    /// Each model file's bytes so far, and its size, while they download.
+    /// Each model's bytes so far, and its size, while they download.
     @ObservationIgnored private var files: [String: (done: Int64, total: Int64)] = [:]
+    /// What the models take, all of them, and whether none is there yet.
+    @ObservationIgnored private var models = ModelFiles(text: false, media: false, speech: false, bytes: 0)
 
     init(engine: Engine) {
         self.engine = engine
@@ -77,17 +63,21 @@ final class Setup {
         if !downloading, let cli = try? cli {
             let status = await Run.run(cli, ["model", "status"])
             let files = try? JSONDecoder().decode(ModelFiles.self, from: Data(status.output.utf8))
+            if let files { models = files }
             model = files.map { $0.complete ? .ready : .missing } ?? .failed(status.problem)
         }
         indexed = (try? await engine.folders().folders) ?? indexed
         inBackground = await Self.indexerRuns()
     }
 
+    /// `sift-it model status`: which models are in the Hugging Face cache, and what they take together.
     private struct ModelFiles: Decodable {
         let text: Bool
         let media: Bool
         let speech: Bool
+        let bytes: Int64
         var complete: Bool { text && media && speech }
+        var none: Bool { !(text || media || speech) }
     }
 
     /// Whether the welcome window has something to do: the first time, unless sift-it was set up already (through its
@@ -109,8 +99,8 @@ final class Setup {
 
     // MARK: - The model
 
-    /// Downloads what's missing of the model (1.6 GB at most), following its progress. The engine lets go of what it
-    /// tried to load meanwhile, so the next search loads the model.
+    /// Downloads the models that aren't there yet (1.5 GB in all), following their progress. The engine lets go of
+    /// what it tried to load meanwhile, so the next search loads them.
     func downloadModel() {
         guard !downloading, model != .ready, let cli = try? cli else { return }
         downloading = true
@@ -122,8 +112,10 @@ final class Setup {
                     step.event == "downloading", let file = step.file
                 else { return }
                 files[file] = (step.done ?? 0, step.total ?? 0)
-                model = .downloading(
-                    done: files.values.reduce(0) { $0 + $1.done }, total: files.values.reduce(0) { $0 + $1.total })
+                // Each model says its size when it starts: with none there before, the whole is known at once.
+                let done = files.values.reduce(0) { $0 + $1.done }
+                let total = files.values.reduce(0) { $0 + $1.total }
+                model = .downloading(done: done, total: models.none ? max(models.bytes, total) : total)
             }
             downloading = false
             model = ran.ok ? .ready : .failed(ran.problem)
@@ -143,11 +135,13 @@ final class Setup {
     /// Counts what indexing a folder takes. Reading it is when macOS asks whether Sift It may, for the folders it
     /// protects.
     func estimate(_ folder: String) async {
-        guard estimates[folder] == nil, let cli = try? cli else { return }
+        guard estimates[folder] == nil, !counting.contains(folder), let cli = try? cli else { return }
+        counting.insert(folder)
         let ran = await Run.run(cli, ["estimate", "--json", folder])
         if let estimate = try? JSONDecoder().decode([Estimate].self, from: Data(ran.output.utf8)).first {
             estimates[folder] = estimate
         }
+        counting.remove(folder)
     }
 
     /// Indexes these folders, and stops indexing the ones it did that aren't among them.
@@ -157,6 +151,16 @@ final class Setup {
         let removed = current.subtracting(folders)
         if !added.isEmpty { indexed = try await engine.folders(.add, paths: added.sorted()).folders }
         if !removed.isEmpty { indexed = try await engine.folders(.remove, paths: removed.sorted()).folders }
+    }
+
+    /// Reads these folders only as deep as given, through `reading.rules`: a folder read in full has its rule taken
+    /// away. Other rules stay as they are.
+    func read(_ depths: [String: Depth]) async throws {
+        guard !depths.isEmpty else { return }
+        let rules = try await engine.setting("reading.rules", as: [JSON].self)
+        let changed = Depth.rules(rules, reading: depths)
+        guard changed != rules else { return }
+        try await engine.set("reading.rules", to: JSON.array(changed).text)
     }
 
     // MARK: - In the background

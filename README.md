@@ -18,11 +18,34 @@ Apple silicon, macOS 14 or later:
 brew install jwa91/tap/sift-it
 ```
 
-Open Sift It from Applications. A welcome window downloads its model (1.6 GB, once), asks which folders to search,
+Open Sift It from Applications. A welcome window downloads its models (1.5 GB, once), asks which folders to search,
 and starts indexing them in the background. After that it lives in the menu bar, and **⌃⇧Space** opens the search
 from any app.
 
 The same install puts the `sift-it` command on your path, for the terminal and the Raycast extension.
+
+`brew uninstall --zap sift-it` removes the app, the index and its settings. It leaves the models (1.5 GB) in the
+Hugging Face cache, `~/.cache/huggingface/hub`, which other apps may share; delete them there when nothing else uses
+them.
+
+## While it indexes
+
+A big folder, or a whole drive, can take hours to index, and searching is useful long before that. Indexing goes in
+rounds, and each one makes more of your files findable:
+
+1. every file by its name and words, within seconds;
+2. documents by meaning;
+3. text in screenshots and scans;
+4. photos by what's in them;
+5. what sounds and video scenes contain;
+6. what's said in recordings.
+
+The menu bar says what can be found already and how long the next milestone takes ("Searchable by words · documents
+by meaning 60% · about 12 min"), and what the rest waits for: a charger, memory, a model. While rounds are left, a
+line under the search results says what can't be found yet ("Recordings: 40% written down"), so a missing result
+isn't taken for a bad one. The welcome window shows what each milestone will take for each folder before it starts,
+and for a huge folder offers to leave the slow ones out. Settings → Index shows the milestones, and what indexing does
+on battery.
 
 ## Searching
 
@@ -110,3 +133,19 @@ How long searches take:
 ```sh
 log stream --level debug --predicate 'subsystem == "dev.sift-it.mac"'
 ```
+
+## Credits
+
+About Sift It, in its menu, lists the parts it's made with:
+
+- [sift-it](https://github.com/jwa91/sift-it), its engine, under the MIT License;
+- [llama.cpp](https://github.com/ggml-org/llama.cpp), which runs the model in it, under the MIT License;
+- [FluidAudio](https://github.com/FluidInference/FluidAudio), by FluidInference, compiled into `sift-it-transcribe`,
+  under the Apache License 2.0;
+- [EmbeddingGemma 2](https://huggingface.co/google/embeddinggemma-2), by Google DeepMind, under the Apache License
+  2.0;
+- [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra), by Moondream (from NVIDIA's Parakeet TDT 0.6B v3),
+  in [FluidInference's Core ML conversion](https://huggingface.co/FluidInference/parakeet-ultra-coreml), under CC BY
+  4.0.
+
+Sift It uses the [MIT License](LICENSE). Gemma is a trademark of Google LLC.

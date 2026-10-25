@@ -1,5 +1,5 @@
-// The settings: the shortcut, opening at login, how to search, the folders to index, and indexing in the background.
-// The window and its views exist only while it's open.
+// The settings: the shortcut, opening at login, how to search, the folders to index, indexing in the background and
+// how far it is. The window and its views exist only while it's open.
 
 import ServiceManagement
 import SiftItKit
@@ -58,7 +58,7 @@ private struct SettingsView: View {
             IndexSettings(engine: engine, setup: setup, openWelcome: openWelcome)
                 .tabItem { Label("Index", systemImage: "chart.bar.doc.horizontal") }
         }
-        .frame(width: 500, height: 380)
+        .frame(width: 500, height: 440)
     }
 }
 
@@ -284,10 +284,16 @@ private struct IndexSettings: View {
     let engine: Engine
     @Bindable var setup: Setup
     let openWelcome: () -> Void
+    @State private var onBattery = "words"
     @State private var problem: String?
 
     var body: some View {
         Form {
+            if let indexer = engine.indexer, indexer.rounds.contains(where: { $0.state != .done }) {
+                Section("What can be found") {
+                    MilestoneList(indexer: indexer)
+                }
+            }
             Section {
                 LabeledContent("Engine", value: engineState)
                 LabeledContent("Search by meaning", value: meaningState)
@@ -305,9 +311,22 @@ private struct IndexSettings: View {
                     Text("Keep the index up to date in the background")
                     Text("From login on, new and changed files are indexed as they come.")
                 }
+                Picker(
+                    "On battery",
+                    selection: Binding(
+                        get: { onBattery },
+                        set: { value in
+                            onBattery = value
+                            change { try await engine.set("indexing.on_battery", to: value) }
+                        })
+                ) {
+                    Text("Read new files' words").tag("words")
+                    Text("Read everything").tag("all")
+                    Text("Wait for a charger").tag("none")
+                }
                 switch setup.model {
                 case .missing, .failed:
-                    Button("Download the Model (1.6 GB)") { setup.downloadModel() }
+                    Button("Download the Model (1.5 GB)") { setup.downloadModel() }
                 case .downloading(let done, let total):
                     ProgressView(value: Double(done), total: Double(max(total, 1))) { Text("Downloading the model…") }
                 default:
@@ -321,6 +340,7 @@ private struct IndexSettings: View {
         }
         .formStyle(.grouped)
         .task {
+            if let value = try? await engine.setting("indexing.on_battery", as: String.self) { onBattery = value }
             await engine.refreshStatus()
             await setup.look()
         }

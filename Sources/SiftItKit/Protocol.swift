@@ -67,16 +67,87 @@ public struct IndexerState: RawRepresentable, Codable, Hashable, Sendable {
     public static let starting = IndexerState(rawValue: "starting")
     /// Comparing the folders with the index.
     public static let syncing = IndexerState(rawValue: "syncing")
-    /// Reading files.
+    /// At work: its rounds say how far.
     public static let indexing = IndexerState(rawValue: "indexing")
-    /// Writing down what's said in recordings and videos, everything else being read.
-    public static let transcribing = IndexerState(rawValue: "transcribing")
-    /// For a charger, for Low Power Mode to end, or for the model to download.
+    /// Nothing can run: `detail` says what the rest waits for.
     public static let waiting = IndexerState(rawValue: "waiting")
     public static let paused = IndexerState(rawValue: "paused")
     /// Everything is done.
     public static let idle = IndexerState(rawValue: "idle")
     public static let stopped = IndexerState(rawValue: "stopped")
+}
+
+/// A round of indexing: a pass over every file with one tool, each making more of them findable. They come in this
+/// order, words first (the engine's docs/design.md, "Rounds").
+public struct Round: RawRepresentable, Codable, Hashable, Sendable {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+
+    /// Names, tags and the words that are simply in files: no model, seconds for everything.
+    public static let words = Round(rawValue: "words")
+    /// What passages mean.
+    public static let text = Round(rawValue: "text")
+    /// The text on screenshots and scanned pages.
+    public static let ocr = Round(rawValue: "ocr")
+    /// What photos, screenshots, scans and video frames show.
+    public static let pictures = Round(rawValue: "pictures")
+    /// What recordings and a video's sound sound like.
+    public static let sound = Round(rawValue: "sound")
+    /// What's said in recordings and videos, written down.
+    public static let speech = Round(rawValue: "speech")
+
+    /// Every round, in their order.
+    public static let all: [Round] = [.words, .text, .ocr, .pictures, .sound, .speech]
+}
+
+/// Where a round is.
+public struct RoundState: RawRepresentable, Codable, Hashable, Sendable {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+
+    /// Nothing is left to do.
+    public static let done = RoundState(rawValue: "done")
+    public static let running = RoundState(rawValue: "running")
+    /// It waits for its turn: another round has its chip, or there's no memory for its tool yet.
+    public static let queued = RoundState(rawValue: "queued")
+    /// It waits for what the indexer's `detail` says: a charger, memory, a model.
+    public static let waiting = RoundState(rawValue: "waiting")
+}
+
+/// How deep files are read (`reading.depth`, and per folder through `reading.rules`): each depth adds rounds.
+public enum Depth: String, CaseIterable, Sendable {
+    /// Names and words, the text on screenshots and scans too: no model.
+    case words
+    /// What text, pictures and sound mean too.
+    case meaning
+    /// What's said in recordings too: everything (the default).
+    case speech
+
+    /// The rounds a file is read in at this depth.
+    public var rounds: Set<Round> {
+        switch self {
+        case .words: [.words, .ocr]
+        case .meaning: [.words, .text, .ocr, .pictures, .sound]
+        case .speech: Set(Round.all)
+        }
+    }
+
+    /// `reading.rules` with each of these folders read as deep as given: a rule of its own, `{"path": "~/Movies/**",
+    /// "depth": "words"}`, or none when it's read in full. Every other rule stays as it is.
+    public static func rules(
+        _ rules: [JSON], reading depths: [String: Depth], home: String = NSHomeDirectory()
+    ) -> [JSON] {
+        var rules = rules
+        for (folder, depth) in depths.sorted(by: { $0.key < $1.key }) {
+            let path = JSON.string(Format.shortPath(folder, home: home) + "/**")
+            rules.removeAll {
+                guard case .object(let rule) = $0 else { return false }
+                return rule["path"] == path && Set(rule.keys).isSubset(of: ["path", "depth"])
+            }
+            if depth != .speech { rules.append(.object(["path": path, "depth": .string(depth.rawValue)])) }
+        }
+        return rules
+    }
 }
 
 /// What a search is by.
@@ -296,52 +367,71 @@ public struct Stats: Decodable, Sendable, Equatable {
 public struct IndexerStatus: Decodable, Sendable, Equatable {
     public let pid: Int32
     public let state: IndexerState
-    /// What it waits for, or how far into a recording it is.
+    /// What the work that's left waits for (a charger, Low Power Mode, memory, a model, a config.json that can't be
+    /// read), also while other rounds run.
     public let detail: String?
-    /// Files done of the ones in this run (or recordings written down, while that's what it does).
-    public let done: Int
-    public let total: Int
+    /// How far each round is, in their order: the rounds this index has had work in.
+    public let rounds: [RoundStatus]
     /// The file it did last.
     public let current: String?
     public let lastError: String?
-    public let speechDone: Int
-    public let speechTotal: Int
 
     enum CodingKeys: String, CodingKey {
-        case pid, state, detail, done, total, current
+        case pid, state, detail, rounds, current
         case lastError = "last_error"
-        case speechDone = "speech_done"
-        case speechTotal = "speech_total"
     }
 
-    public init(from decoder: any Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        pid = try c.decode(Int32.self, forKey: .pid)
-        state = try c.decode(IndexerState.self, forKey: .state)
-        detail = try c.decodeIfPresent(String.self, forKey: .detail)
-        done = try c.decodeIfPresent(Int.self, forKey: .done) ?? 0
-        total = try c.decodeIfPresent(Int.self, forKey: .total) ?? 0
-        current = try c.decodeIfPresent(String.self, forKey: .current)
-        lastError = try c.decodeIfPresent(String.self, forKey: .lastError)
-        speechDone = try c.decodeIfPresent(Int.self, forKey: .speechDone) ?? 0
-        speechTotal = try c.decodeIfPresent(Int.self, forKey: .speechTotal) ?? 0
+    public init(
+        pid: Int32, state: IndexerState, detail: String? = nil, rounds: [RoundStatus] = [], current: String? = nil,
+        lastError: String? = nil
+    ) {
+        self.pid = pid
+        self.state = state
+        self.detail = detail
+        self.rounds = rounds
+        self.current = current
+        self.lastError = lastError
     }
 
-    /// How far the work it's doing now is, from 0 to 1, when it's counting.
-    public var progress: Double? {
-        switch state {
-        case .indexing, .syncing:
-            return total > 0 ? Double(done) / Double(total) : nil
-        case .transcribing:
-            return speechTotal > 0 ? Double(speechDone) / Double(speechTotal) : nil
-        default:
-            return nil
-        }
-    }
-
-    /// It's reading or writing down: work is going on.
+    /// It's comparing or reading: work is going on.
     public var isWorking: Bool {
-        [.starting, .syncing, .indexing, .transcribing].contains(state)
+        [.starting, .syncing, .indexing].contains(state)
+    }
+}
+
+/// How far a round of indexing is.
+public struct RoundStatus: Decodable, Sendable, Equatable {
+    public let round: Round
+    public let state: RoundState
+    /// What's done of what's known so far, in the round's unit: files (words), passages (text), pictures (OCR and
+    /// pictures), or seconds of sound (sound and speech). The total grows while the rounds before it find more.
+    public let done: Double
+    public let total: Double
+    /// The files with something left to do in it.
+    public let files: Int
+    /// About how long the rest takes, once it has run a while.
+    public let secondsLeft: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case round, state, done, total, files
+        case secondsLeft = "seconds_left"
+    }
+
+    public init(
+        round: Round, state: RoundState, done: Double = 0, total: Double = 0, files: Int = 0,
+        secondsLeft: Double? = nil
+    ) {
+        self.round = round
+        self.state = state
+        self.done = done
+        self.total = total
+        self.files = files
+        self.secondsLeft = secondsLeft
+    }
+
+    /// How far it is, from 0 to 1, when there's something to count.
+    public var progress: Double? {
+        total > 0 ? min(done / total, 1) : nil
     }
 }
 
@@ -356,9 +446,94 @@ public struct Done: Decodable, Sendable {
     public let ok: Bool
 }
 
+/// Any JSON value: for a setting the app changes a part of, keeping the rest as it is.
+public enum JSON: Codable, Sendable, Equatable {
+    case null
+    case bool(Bool)
+    case number(Double)
+    case string(String)
+    case array([JSON])
+    case object([String: JSON])
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if c.decodeNil() {
+            self = .null
+        } else if let value = try? c.decode(Bool.self) {
+            self = .bool(value)
+        } else if let value = try? c.decode(Double.self) {
+            self = .number(value)
+        } else if let value = try? c.decode(String.self) {
+            self = .string(value)
+        } else if let value = try? c.decode([JSON].self) {
+            self = .array(value)
+        } else {
+            self = .object(try c.decode([String: JSON].self))
+        }
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.singleValueContainer()
+        switch self {
+        case .null: try c.encodeNil()
+        case .bool(let value): try c.encode(value)
+        case .number(let value): try c.encode(value)
+        case .string(let value): try c.encode(value)
+        case .array(let value): try c.encode(value)
+        case .object(let value): try c.encode(value)
+        }
+    }
+
+    /// As a line of JSON, for a setting's value.
+    public var text: String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        // Only what JSON can hold: this can't fail.
+        return String(decoding: try! encoder.encode(self), as: UTF8.self)
+    }
+}
+
 /// A setting's value.
 public struct Setting<Value: Decodable & Sendable>: Decodable, Sendable {
     public let config: Value
+}
+
+// MARK: - The command line's
+
+/// What indexing a folder takes (`sift-it estimate --json`): for each round it has work in, how much and how long.
+public struct Estimate: Decodable, Sendable, Equatable {
+    public let folder: String
+    public let files: Int
+    /// The rounds with work, in their order.
+    public let rounds: [RoundEstimate]
+    /// About how long it all takes, with the rounds that run side by side on different chips counted once.
+    public let seconds: Double
+    public let bytes: UInt64
+    public let byKind: [String: Int]
+    /// macOS didn't let it be read (yet).
+    public let unreadable: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case folder, files, rounds, seconds, bytes, unreadable
+        case byKind = "by_kind"
+    }
+
+    /// About how long it takes when it's read only as deep as `depth`. Rounds side by side can't be told apart here,
+    /// so it's their sum, or the whole when that's less.
+    public func seconds(at depth: Depth) -> Double {
+        let kept = rounds.filter { depth.rounds.contains($0.round) }
+        guard kept.count < rounds.count else { return seconds }
+        return min(seconds, kept.reduce(0) { $0 + $1.seconds })
+    }
+}
+
+/// What a round will take for a folder.
+public struct RoundEstimate: Decodable, Sendable, Equatable {
+    public let round: Round
+    /// In the round's unit: files, passages, pictures or seconds of sound.
+    public let total: Double
+    public let unit: String
+    public let seconds: Double
 }
 
 // MARK: - Events

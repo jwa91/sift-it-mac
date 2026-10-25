@@ -1,5 +1,5 @@
-// Sift It in the menu bar: its icon says whether the index is up to date (and how far indexing is while it works), and
-// its menu opens the search, pauses indexing, and holds the settings.
+// Sift It in the menu bar: its icon says whether the index is up to date (and how far the next milestone is while it
+// works), and its menu says what can be found already, opens the search, pauses indexing, and holds the settings.
 
 import AppKit
 import Observation
@@ -41,8 +41,8 @@ final class StatusItem: NSObject, NSMenuDelegate {
 
     private func update() {
         let indexer = engine.indexer
-        let progress = indexer.flatMap { $0.isWorking ? $0.progress : nil }
-        item.button?.title = progress.map { " \(Int($0 * 100))%" } ?? ""
+        let next = indexer.flatMap { $0.isWorking ? $0.rounds.first { $0.state != .done } : nil }
+        item.button?.title = next?.progress.map { " \(Milestones.percent($0))%" } ?? ""
         item.button?.appearsDisabled = !engine.isConnected || indexer?.state == .paused
         if menuIsOpen { fill() }
     }
@@ -70,6 +70,7 @@ final class StatusItem: NSObject, NSMenuDelegate {
         for line in statusLines() { menu.addItem(note(line)) }
         for action in indexerActions() { menu.addItem(action) }
         menu.addItem(.separator())
+        menu.addItem(item("About Sift It", #selector(about)))
         let settings = item("Settings…", #selector(settings))
         settings.keyEquivalent = ","
         menu.addItem(settings)
@@ -79,7 +80,7 @@ final class StatusItem: NSObject, NSMenuDelegate {
         menu.addItem(quit)
     }
 
-    /// How the index is doing, in a line or two.
+    /// How the index is doing: what can be found already and the next milestone, and what the rest waits for.
     private func statusLines() -> [String] {
         switch engine.connection {
         case .missing: return ["sift-it isn't installed"]
@@ -87,30 +88,25 @@ final class StatusItem: NSObject, NSMenuDelegate {
         case .down: return ["sift-it's engine isn't running"]
         case .connected: break
         }
-        var lines: [String] = []
-        let files = engine.status?.stats.files
-        if let indexer = engine.indexer, indexerRuns(indexer) {
-            switch indexer.state {
-            case .indexing:
-                let percent = indexer.progress.map { " (\(Int($0 * 100))%)" } ?? ""
-                lines.append("Indexing \(indexer.done) of \(indexer.total) files\(percent)")
-            case .syncing: lines.append("Comparing the folders with the index…")
-            case .transcribing: lines.append("Writing down speech: \(indexer.speechDone) of \(indexer.speechTotal)")
-            case .waiting: lines.append("Waiting" + (indexer.detail.map { ": \($0)" } ?? ""))
-            case .paused: lines.append("Indexing is paused")
-            case .starting: lines.append("Starting…")
-            default: lines.append(files.map { "Up to date: \($0.formatted()) files" } ?? "Up to date")
-            }
-            if indexer.isWorking, let current = indexer.current {
-                lines.append((current as NSString).lastPathComponent)
-            }
-        } else {
-            lines.append("The background indexer isn't running")
+        guard let indexer = engine.indexer, indexerRuns(indexer) else {
+            return ["The background indexer isn't running"]
         }
+        let first: String
+        switch indexer.state {
+        case .starting: first = "Starting…"
+        case .idle:
+            first = engine.status.map { "Up to date: \($0.stats.files.formatted()) files" } ?? "Up to date"
+        default:
+            first =
+                Milestones.next(indexer)
+                ?? (indexer.state == .syncing ? "Comparing the folders with the index…" : "Indexing…")
+        }
+        let second = indexer.state == .paused ? "Indexing is paused" : indexer.detail
+        if let second { return [first, second] }
         if engine.meaning == .unavailable {
-            lines.append("Words only: " + (engine.meaningError ?? "search by meaning is unavailable"))
+            return [first, "Words only: " + (engine.meaningError ?? "search by meaning is unavailable")]
         }
-        return lines
+        return [first]
     }
 
     private func indexerActions() -> [NSMenuItem] {
@@ -149,6 +145,7 @@ final class StatusItem: NSObject, NSMenuDelegate {
 
     @objc private func search() { openSearch() }
     @objc private func settings() { openSettings() }
+    @objc private func about() { About.show() }
     @objc private func startEngine() { engine.start() }
 
     /// The indexer pauses and resumes on SIGUSR2, and looks again on SIGUSR1 (services/indexer.rs).
