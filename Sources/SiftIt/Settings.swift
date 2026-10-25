@@ -121,6 +121,8 @@ final class RecorderButton: NSButton {
     private var recording = false {
         didSet { title = recording ? "Type a shortcut…" : Shortcut.saved.display }
     }
+    /// Watches the window while recording: it stops being key when it closes or another app comes forward.
+    private var resignedKey: (any NSObjectProtocol)?
 
     init(hotkey: Hotkey) {
         self.hotkey = hotkey
@@ -136,10 +138,18 @@ final class RecorderButton: NSButton {
     override var acceptsFirstResponder: Bool { true }
 
     @objc private func start() {
+        guard !recording, let window else { return }
         // The shortcut being replaced mustn't open the panel while it's typed again.
         hotkey.unregister()
         recording = true
-        window?.makeFirstResponder(self)
+        window.makeFirstResponder(self)
+        // Neither closing the window nor going to another app takes first responder away: the old shortcut comes
+        // back then too.
+        resignedKey = NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignKeyNotification, object: window, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.finish(nil) }
+        }
     }
 
     override func keyDown(with event: NSEvent) {
@@ -160,11 +170,20 @@ final class RecorderButton: NSButton {
     }
 
     override func resignFirstResponder() -> Bool {
-        if recording { finish(nil) }
+        finish(nil)
         return super.resignFirstResponder()
     }
 
+    /// A page of the welcome window going takes the button out of its window without resigning it first responder.
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow !== window { finish(nil) }
+        super.viewWillMove(toWindow: newWindow)
+    }
+
     private func finish(_ shortcut: Shortcut?) {
+        guard recording else { return }
+        if let resignedKey { NotificationCenter.default.removeObserver(resignedKey) }
+        resignedKey = nil
         if let shortcut {
             if hotkey.register(shortcut) {
                 Shortcut.saved = shortcut

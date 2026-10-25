@@ -34,6 +34,7 @@ final class SearchController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
     private let separator = NSBox()
     private let body = NSView()
     private let list = ResultsList()
+    private let divider = NSBox()
     private let preview = PreviewView()
     private let message = NSTextField(wrappingLabelWithString: "")
     private let footer = NSView()
@@ -235,8 +236,7 @@ final class SearchController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         if results.hits.isEmpty, !final { return }
         note.stringValue = final && !results.meaning ? meaningNote : ""
         list.show(results.hits, keeping: navigated ? list.selectedHit?.path : nil)
-        message.isHidden = !results.hits.isEmpty
-        message.stringValue = "Nothing stands out.\nDescribe it differently, or type words that are in it."
+        say(results.hits.isEmpty ? "Nothing stands out.\nDescribe it differently, or type words that are in it." : nil)
         if results.hits.isEmpty { preview.show(nil, query: query) }
         setExpanded(true)
     }
@@ -253,13 +253,20 @@ final class SearchController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         spinner.stopAnimation(nil)
         list.show([], keeping: nil)
         preview.show(nil, query: "")
-        message.isHidden = false
-        message.stringValue =
+        let problem =
             switch engine.connection {
             case .missing: "sift-it isn't installed.\nInstall it with Homebrew: brew install jwa91/tap/sift-it"
             default: error.localizedDescription
             }
+        say(problem)
         setExpanded(true)
+    }
+
+    /// A message in place of the results and the preview, without the line between them; nil shows them again.
+    private func say(_ text: String?) {
+        message.stringValue = text ?? ""
+        message.isHidden = text == nil
+        divider.isHidden = text != nil
     }
 
     // MARK: - Keys
@@ -398,7 +405,6 @@ final class SearchController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         separator.isHidden = true
         body.isHidden = true
 
-        let divider = NSBox()
         divider.boxType = .separator
         message.alignment = .center
         message.textColor = .secondaryLabelColor
