@@ -1,9 +1,12 @@
 # Changelog
 
-## [Unreleased]
+## [0.5.0] — 2026-10-25
 
-Progress you can read: what can be found already, and what comes next.
+Progress you can read: what can be found already, and what comes next. With sift-it 0.4.0, which indexes in rounds:
+every file is found by its words within seconds of choosing the folders.
 
+- The app ships with sift-it 0.4.0 (`ENGINE_VERSION`), and with the licenses of what's built into it in
+  `Contents/Resources/THIRD_PARTY_NOTICES`.
 - Indexing goes in rounds, and the app says each as a milestone: every file by its name and words (within seconds),
   documents by meaning, text in screenshots and scans, photos by what's in them, what sounds and video scenes
   contain, and what's said in recordings.

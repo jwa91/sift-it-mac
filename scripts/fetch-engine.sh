@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # Fetches the sift-it release the app ships with (ENGINE_VERSION) into .build/engine/<version>/, once per version:
 # its binaries as the release has them, signed with a Developer ID and notarized, after checking the archive against
-# the release's checksums and each binary's signature. Prints the folder.
+# the release's checksums and each binary's signature, and the licenses of what's built into them
+# (THIRD_PARTY_NOTICES). Prints the folder.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 version="$(tr -d '[:space:]' < ENGINE_VERSION)"
 folder=".build/engine/$version"
 binaries=(sift-it sift-it-transcribe)
-if [[ -x "$folder/sift-it" && -x "$folder/sift-it-transcribe" ]]; then
+if [[ -x "$folder/sift-it" && -x "$folder/sift-it-transcribe" && -s "$folder/THIRD_PARTY_NOTICES" ]]; then
   echo "$folder"
   exit 0
 fi
@@ -23,7 +24,7 @@ curl -fsSL --retry 3 "$base/checksums.txt" -o "$stage/checksums.txt"
   echo "fetch-engine: $archive doesn't match the release's checksum" >&2
   exit 1
 }
-tar -xzf "$stage/$archive" -C "$stage" "${binaries[@]}"
+tar -xzf "$stage/$archive" -C "$stage" "${binaries[@]}" THIRD_PARTY_NOTICES
 for binary in "${binaries[@]}"; do
   codesign --verify --strict "$stage/$binary"
   signature="$(codesign -dvv "$stage/$binary" 2>&1)"
@@ -36,4 +37,5 @@ done
 rm -rf "$folder"
 mkdir -p "$folder"
 for binary in "${binaries[@]}"; do mv "$stage/$binary" "$folder/"; done
+mv "$stage/THIRD_PARTY_NOTICES" "$folder/"
 echo "$folder"
