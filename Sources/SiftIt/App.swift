@@ -47,7 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotkey = Hotkey { [weak self] in self?.search.toggle() }
         hotkey.register(.saved)
         setup = Setup(engine: engine)
-        welcome = WelcomeWindow(setup: setup, hotkey: hotkey)
+        welcome = WelcomeWindow(engine: engine, setup: setup, hotkey: hotkey)
         welcome.onFinish = { [weak self] in self?.search.show() }
         settings = SettingsWindow(engine: engine, setup: setup, hotkey: hotkey)
         settings.openWelcome = { [weak self] in self?.welcome.show() }

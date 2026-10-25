@@ -1,9 +1,11 @@
-// The search panel: a bar until there's something to show, then the results beside a preview of the selected one.
+// The search panel: a bar until there's something to show, then the results beside a preview of the selected one, and
+// while indexing has rounds left, a line under them that says what can't be found yet.
 //
 // Every keystroke asks for results by words, answered at once. Once typing pauses, the same query is asked by meaning,
 // and those results replace the others. A reply for an older query is dropped.
 
 import AppKit
+import Observation
 import Quartz
 import SiftItKit
 import os
@@ -18,6 +20,7 @@ final class SearchController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
     static let expandedHeight: CGFloat = 480
     static let listWidth: CGFloat = 300
     static let cornerRadius: CGFloat = 26
+    static let footerHeight: CGFloat = 26
     /// How long typing pauses before the query is asked by meaning.
     static let typingPause: Duration = .milliseconds(80)
 
@@ -33,6 +36,9 @@ final class SearchController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
     private let list = ResultsList()
     private let preview = PreviewView()
     private let message = NSTextField(wrappingLabelWithString: "")
+    private let footer = NSView()
+    private let notYet = NSTextField(labelWithString: "")
+    private var footerHeight: NSLayoutConstraint!
 
     private var query = ""
     /// Counts the queries asked: a reply for an older one is dropped.
@@ -67,6 +73,21 @@ final class SearchController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         }
         panel.quickLookItem = { [weak self] in self?.list.selectedHit?.url }
         panel.quickLookKey = { [weak self] event in self?.quickLookKey(event) ?? false }
+        followIndexing()
+    }
+
+    /// Says what can't be found yet while the indexer has rounds left, so a missing hit isn't taken for a bad result:
+    /// "Recordings: 40% written down". The line is laid out only when it comes or goes.
+    private func followIndexing() {
+        withObservationTracking {
+            let line = engine.isConnected ? engine.indexer.flatMap(Milestones.notYet) : nil
+            notYet.stringValue = line ?? ""
+            notYet.toolTip = line
+            footer.isHidden = line == nil
+            footerHeight.constant = line == nil ? 0 : Self.footerHeight
+        } onChange: {
+            DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.followIndexing() } }
+        }
     }
 
     var isShown: Bool { panel.isVisible && !hiding }
@@ -370,16 +391,25 @@ final class SearchController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         message.textColor = .secondaryLabelColor
         message.font = .systemFont(ofSize: 13)
         message.isHidden = true
+        notYet.font = .systemFont(ofSize: 11)
+        notYet.textColor = .tertiaryLabelColor
+        notYet.lineBreakMode = .byTruncatingTail
+        // A long line is cut short, rather than widening the panel; its tooltip says all of it.
+        notYet.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        notYet.translatesAutoresizingMaskIntoConstraints = false
+        footer.addSubview(notYet)
+        footer.isHidden = true
 
         for view in [icon, field, note, spinner, separator, body] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(view)
         }
-        for view in [list.view, divider, preview, message] as [NSView] {
+        for view in [list.view, divider, preview, message, footer] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             body.addSubview(view)
         }
         let bar = Self.barHeight
+        footerHeight = footer.heightAnchor.constraint(equalToConstant: 0)
         NSLayoutConstraint.activate([
             icon.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 20),
             icon.centerYAnchor.constraint(equalTo: root.topAnchor, constant: bar / 2),
@@ -403,18 +433,26 @@ final class SearchController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
 
             list.view.leadingAnchor.constraint(equalTo: body.leadingAnchor),
             list.view.topAnchor.constraint(equalTo: body.topAnchor),
-            list.view.bottomAnchor.constraint(equalTo: body.bottomAnchor),
+            list.view.bottomAnchor.constraint(equalTo: footer.topAnchor),
             list.view.widthAnchor.constraint(equalToConstant: Self.listWidth),
             divider.leadingAnchor.constraint(equalTo: list.view.trailingAnchor),
             divider.topAnchor.constraint(equalTo: body.topAnchor),
-            divider.bottomAnchor.constraint(equalTo: body.bottomAnchor),
+            divider.bottomAnchor.constraint(equalTo: footer.topAnchor),
             preview.leadingAnchor.constraint(equalTo: divider.trailingAnchor),
             preview.trailingAnchor.constraint(equalTo: body.trailingAnchor),
             preview.topAnchor.constraint(equalTo: body.topAnchor),
-            preview.bottomAnchor.constraint(equalTo: body.bottomAnchor),
+            preview.bottomAnchor.constraint(equalTo: footer.topAnchor),
             message.centerXAnchor.constraint(equalTo: body.centerXAnchor),
             message.centerYAnchor.constraint(equalTo: body.centerYAnchor, constant: -20),
             message.widthAnchor.constraint(lessThanOrEqualTo: body.widthAnchor, constant: -80),
+
+            footer.leadingAnchor.constraint(equalTo: body.leadingAnchor),
+            footer.trailingAnchor.constraint(equalTo: body.trailingAnchor),
+            footer.bottomAnchor.constraint(equalTo: body.bottomAnchor),
+            footerHeight,
+            notYet.leadingAnchor.constraint(equalTo: footer.leadingAnchor, constant: 20),
+            notYet.trailingAnchor.constraint(lessThanOrEqualTo: footer.trailingAnchor, constant: -20),
+            notYet.centerYAnchor.constraint(equalTo: footer.centerYAnchor, constant: -2),
         ])
 
         panel.contentView = panelBackground(cornerRadius: Self.cornerRadius, content: root)

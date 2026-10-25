@@ -85,8 +85,11 @@ cask "sift-it" do
   uninstall launchctl: ["local.sift-it.indexer", "local.sift-it.engine"],
             quit:      "dev.sift-it.mac"
 
+  # The models stay: they're in the shared Hugging Face cache (~/.cache/huggingface/hub), which other apps may use.
   zap trash: [
     "~/Library/Application Support/Sift It",
+    "~/Library/Caches/sift-it",
+    "~/Library/Caches/sift-it-transcribe",
     "~/Library/LaunchAgents/local.sift-it.engine.plist",
     "~/Library/LaunchAgents/local.sift-it.indexer.plist",
     "~/Library/Preferences/dev.sift-it.mac.plist",

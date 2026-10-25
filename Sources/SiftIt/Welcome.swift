@@ -1,25 +1,28 @@
-// The welcome window: what Sift It is, the model, the folders to search, and indexing in the background. It does what
-// the command line's setup did, so installing the app is all there is to it. Its views exist only while it's open.
+// The welcome window: what Sift It is, the model, the folders to search (with what each milestone takes for them), and
+// indexing in the background, then what can be found already. It does what the command line's setup did, so installing
+// the app is all there is to it. Its views exist only while it's open.
 
 import SiftItKit
 import SwiftUI
 
 @MainActor
 final class WelcomeWindow: NSObject, NSWindowDelegate {
+    private let engine: Engine
     private let setup: Setup
     private let hotkey: Hotkey
     private var window: NSWindow?
     /// The welcome is done: the search is next.
     var onFinish: () -> Void = {}
 
-    init(setup: Setup, hotkey: Hotkey) {
+    init(engine: Engine, setup: Setup, hotkey: Hotkey) {
+        self.engine = engine
         self.setup = setup
         self.hotkey = hotkey
     }
 
     func show() {
         if window == nil {
-            let view = WelcomeView(setup: setup, hotkey: hotkey) { [weak self] in
+            let view = WelcomeView(engine: engine, setup: setup, hotkey: hotkey) { [weak self] in
                 self?.window?.close()
                 self?.onFinish()
             }
@@ -43,18 +46,21 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
 }
 
 private struct WelcomeView: View {
+    let engine: Engine
     @Bindable var setup: Setup
     let hotkey: Hotkey
     let finish: () -> Void
 
     private enum Page: Int, CaseIterable {
-        case hello, model, folders, ready
+        case hello, model, folders, ready, indexing
     }
 
     @State private var page = Page.hello
     /// The folders offered: the usual ones in the home folder, those indexed already, and those added here.
     @State private var offered: [String] = []
     @State private var chosen: Set<String> = []
+    /// How deep a folder is read, where that was chosen here: a huge one can leave out the slow milestones.
+    @State private var depths: [String: Depth] = [:]
     @State private var inBackground = true
     @State private var atLogin = true
     @State private var starting = false
@@ -68,6 +74,7 @@ private struct WelcomeView: View {
                 case .model: modelPage
                 case .folders: foldersPage
                 case .ready: readyPage
+                case .indexing: indexingPage
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -112,7 +119,7 @@ private struct WelcomeView: View {
             symbol: "arrow.down.circle", title: "Download the model",
             text: """
                 Sift It understands your files with Google DeepMind's EmbeddingGemma 2, running on this Mac. \
-                It's downloaded once: 1.6 GB.
+                It's downloaded once: 1.5 GB.
                 """
         ) {
             VStack(alignment: .leading, spacing: 10) {
@@ -120,7 +127,7 @@ private struct WelcomeView: View {
                 case .unknown:
                     ProgressView().controlSize(.small)
                 case .missing:
-                    Button("Download (1.6 GB)") { setup.downloadModel() }
+                    Button("Download (1.5 GB)") { setup.downloadModel() }
                         .controlSize(.large)
                 case .downloading(let done, let total):
                     ProgressView(value: Double(done), total: Double(max(total, 1)))
@@ -155,13 +162,16 @@ private struct WelcomeView: View {
                     ForEach(offered, id: \.self) { folder in
                         FolderRow(
                             folder: folder, indexed: setup.indexed.contains(folder),
-                            estimate: setup.estimates[folder],
+                            counting: setup.counting.contains(folder), estimate: setup.estimates[folder],
                             chosen: Binding(
                                 get: { chosen.contains(folder) },
                                 set: { on in
                                     if on { chosen.insert(folder) } else { chosen.remove(folder) }
                                     if on { Task { await setup.estimate(folder) } }
-                                }))
+                                }),
+                            depth: Binding(
+                                get: { depths[folder] ?? .speech },
+                                set: { depths[folder] = $0 }))
                         if folder != offered.last { Divider() }
                     }
                 }
@@ -178,8 +188,12 @@ private struct WelcomeView: View {
     private var readyPage: some View {
         PageLayout(
             symbol: "checkmark.seal", title: "You're all set",
-            text: firstPass.map { "Indexing everything once takes \($0). You can search while it goes." }
-                ?? "You can search while Sift It indexes."
+            text: firstPass.map {
+                """
+                In \($0.words), every file can be found by its name and words. All of it takes \($0.all), and you \
+                can search meanwhile.
+                """
+            } ?? "You can search while Sift It indexes."
         ) {
             VStack(alignment: .leading, spacing: 14) {
                 Toggle(isOn: $inBackground) {
@@ -211,6 +225,37 @@ private struct WelcomeView: View {
         }
     }
 
+    /// Searching works from the start: by words within seconds, and by more as each milestone is reached.
+    private var indexingPage: some View {
+        let indexer = engine.indexer
+        let words = indexer?.rounds.first { $0.round == .words }?.state == .done
+        let text =
+            !setup.inBackground
+            ? "Indexing in the background is off. Turn it on in Settings, and Sift It reads your files."
+            : (words ? "Every file" : "In a few seconds, every file")
+                + " can be found by its name and words. The rest follows, a milestone at a time."
+        return PageLayout(symbol: "magnifyingglass", title: "You can search now", text: text) {
+            if setup.inBackground {
+                MilestoneList(indexer: indexer.flatMap { $0.rounds.isEmpty ? nil : $0 } ?? expected)
+                    .padding(.top, 4)
+            }
+        }
+    }
+
+    /// The milestones the chosen folders will have, before the indexer says how far each is.
+    private var expected: IndexerStatus {
+        let rounds = Set(
+            chosen.flatMap { folder in
+                (setup.estimates[folder]?.rounds ?? []).map(\.round)
+                    .filter { (depths[folder] ?? .speech).rounds.contains($0) }
+            })
+        return IndexerStatus(
+            pid: 0, state: .starting,
+            rounds: Round.all.filter { $0 == .words || rounds.contains($0) }.map {
+                RoundStatus(round: $0, state: $0 == .words ? .running : .queued)
+            })
+    }
+
     // MARK: - Footer
 
     private var footer: some View {
@@ -223,12 +268,16 @@ private struct WelcomeView: View {
                 }
             }
             Spacer()
-            if page != .hello {
+            if page != .hello, page != .indexing {
                 Button("Back") { go(-1) }
                     .controlSize(.large)
             }
-            Button(page == .ready ? "Start Searching" : "Continue") {
-                page == .ready ? start() : go(1)
+            Button(page == .ready ? "Start Indexing" : page == .indexing ? "Start Searching" : "Continue") {
+                switch page {
+                case .ready: start()
+                case .indexing: finish()
+                default: go(1)
+                }
             }
             .keyboardShortcut(.defaultAction)
             .buttonStyle(.borderedProminent)
@@ -269,11 +318,12 @@ private struct WelcomeView: View {
         problem = nil
         Task {
             do {
+                try await setup.read(depths.filter { chosen.contains($0.key) })
                 try await setup.index(chosen)
                 try await setup.indexInBackground(inBackground)
                 try Setup.openAtLogin(atLogin)
                 Setup.isDone = true
-                finish()
+                go(1)
             } catch {
                 problem = error.localizedDescription
             }
@@ -295,12 +345,15 @@ private struct WelcomeView: View {
         }
     }
 
-    /// How long indexing the chosen folders that aren't indexed yet takes, in words, once each is counted.
-    private var firstPass: String? {
+    /// How long indexing the chosen folders that aren't indexed yet takes, once each is counted: until every file can be
+    /// found by its words, and all of it.
+    private var firstPass: (words: String, all: String)? {
         let new = chosen.filter { !setup.indexed.contains($0) }
         let counted = new.compactMap { setup.estimates[$0] }
         guard !counted.isEmpty, counted.count == new.count else { return nil }
-        return duration(counted.reduce(0) { $0 + $1.duration })
+        let words = counted.flatMap(\.rounds).filter { $0.round == .words }.reduce(0) { $0 + $1.seconds }
+        let all = counted.reduce(0) { $0 + $1.seconds(at: depths[$1.folder] ?? .speech) }
+        return (Format.duration(words), Format.duration(all))
     }
 }
 
@@ -347,45 +400,109 @@ private struct Feature: View {
     }
 }
 
+/// A folder to choose, with what indexing it takes; opened, what each milestone takes. A huge one offers to leave out
+/// the slow milestones.
 private struct FolderRow: View {
     let folder: String
     let indexed: Bool
+    let counting: Bool
     let estimate: Estimate?
     @Binding var chosen: Bool
+    @Binding var depth: Depth
+    @State private var open = false
+
+    /// Long enough to offer reading it less deeply.
+    static let huge: Double = 3600
 
     var body: some View {
-        Toggle(isOn: $chosen) {
-            HStack(spacing: 10) {
-                Image(nsImage: NSWorkspace.shared.icon(forFile: folder))
-                    .resizable()
-                    .frame(width: 22, height: 22)
-                Text(FileManager.default.displayName(atPath: folder))
-                Spacer()
-                Text(summary)
-                    .font(.callout.monospacedDigit())
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Toggle(isOn: $chosen) {
+                    HStack(spacing: 10) {
+                        Image(nsImage: NSWorkspace.shared.icon(forFile: folder))
+                            .resizable()
+                            .frame(width: 22, height: 22)
+                        Text(FileManager.default.displayName(atPath: folder))
+                        Spacer()
+                        if chosen, !indexed, counting, estimate == nil {
+                            ProgressView().controlSize(.mini)
+                        }
+                        Text(summary)
+                            .font(.callout.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .toggleStyle(.checkbox)
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) { open.toggle() }
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .rotationEffect(.degrees(open ? 90 : 0))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 16, height: 16)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.borderless)
+                .opacity(milestones == nil ? 0 : 1)
+                .disabled(milestones == nil)
+                .accessibilityLabel(open ? "Hide the milestones" : "Show the milestones")
+            }
+            if open, let milestones {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(milestones.rounds, id: \.round) { round in
+                        let kept = depth.rounds.contains(round.round)
+                        HStack {
+                            Text(Milestones.capitalized(round.round.milestone))
+                            Spacer()
+                            Text(kept ? Format.duration(round.seconds) : "Left out")
+                                .monospacedDigit()
+                        }
+                        .foregroundStyle(kept ? .secondary : .tertiary)
+                    }
+                    if milestones.seconds >= Self.huge {
+                        Picker("Read", selection: $depth) {
+                            ForEach(Depth.allCases.reversed(), id: \.self) { depth in
+                                Text("\(name(depth)) · \(Format.duration(milestones.seconds(at: depth)))").tag(depth)
+                            }
+                        }
+                        .fixedSize()
+                        .padding(.top, 2)
+                    }
+                }
+                .font(.callout)
+                .padding(.leading, 52)
+                .padding(.trailing, 22)
+                .padding(.bottom, 4)
             }
         }
-        .toggleStyle(.checkbox)
         .padding(.vertical, 6)
+        // A huge folder shows what it takes, and the offer, as soon as it's counted.
+        .onChange(of: estimate, initial: true) { _, estimate in
+            if let estimate, estimate.seconds >= Self.huge { open = true }
+        }
+    }
+
+    /// The estimate to show the milestones of: a chosen folder that's counted and readable, with work to do.
+    private var milestones: Estimate? {
+        guard chosen, !indexed, let estimate, !estimate.unreadable, !estimate.rounds.isEmpty else { return nil }
+        return estimate
     }
 
     private var summary: String {
         guard chosen else { return "" }
         if indexed { return "Indexed" }
-        guard let estimate else { return "Counting…" }
+        guard let estimate else { return counting ? "Counting…" : "" }
         if estimate.unreadable { return "Not readable yet" }
         let files = estimate.files == 1 ? "1 file" : "\(estimate.files.formatted()) files"
-        return "\(files) · \(duration(estimate.duration))"
+        return "\(files) · \(Format.duration(estimate.seconds(at: depth)))"
     }
-}
 
-/// "under a minute", "about 12 min", "about 2 h".
-private func duration(_ seconds: Double) -> String {
-    switch seconds {
-    case ..<60: "under a minute"
-    case ..<5400: "about \(Int((seconds / 60).rounded())) min"
-    default: "about \(Int((seconds / 3600).rounded())) h"
+    private func name(_ depth: Depth) -> String {
+        switch depth {
+        case .speech: "Everything"
+        case .meaning: "All but what's said"
+        case .words: "Names and words only"
+        }
     }
 }
 

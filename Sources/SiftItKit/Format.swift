@@ -82,6 +82,15 @@ public enum Format {
         return String(format: value < 10 ? "%.1f %@" : "%.0f %@", value, units[unit])
     }
 
+    /// How long something takes, roughly: "under a minute", "about 12 min", "about 2 h".
+    public static func duration(_ seconds: Double) -> String {
+        switch seconds {
+        case ..<60: "under a minute"
+        case ..<5400: "about \(Int((seconds / 60).rounded())) min"
+        default: "about \(Int((seconds / 3600).rounded())) h"
+        }
+    }
+
     /// The query's words as the engine splits them: letters and digits, two or more.
     public static func words(of query: String) -> [String] {
         query.lowercased()

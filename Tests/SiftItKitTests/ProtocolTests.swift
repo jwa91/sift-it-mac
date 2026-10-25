@@ -51,20 +51,117 @@ let videoHit = """
     #expect(String(decoding: Request.unload.line(id: 6), as: UTF8.self) == #"{"id":6,"op":"unload"}"#)
 }
 
-@Test func eventsRead() {
+/// The indexer's progress as the engine says it, in status.json, the `status` reply and the `indexer` event: words done,
+/// documents by meaning running, speech waiting for a charger.
+let indexerLine = """
+    {"event":"indexer","pid":7,"state":"indexing","detail":"Waiting for a charger","rounds":[
+     {"round":"words","state":"done","done":1234.0,"total":1234.0,"files":0,"seconds_left":null},
+     {"round":"text","state":"running","done":12000.0,"total":20000.0,"files":310,"seconds_left":720.5},
+     {"round":"pictures","state":"queued","done":0.0,"total":900.0,"files":900,"seconds_left":null},
+     {"round":"speech","state":"waiting","done":14400.0,"total":36000.0,"files":12,"seconds_left":null}],
+     "current":"/Users/me/Documents/notes.md","updated":1792572554.66,"last_error":null}
+    """
+
+@Test func eventsRead() throws {
     let ready = Event.decode(
         Data(#"{"event":"ready","version":"0.3.1","build":"b","index":"/i","meaning":"unloaded"}"#.utf8))
     #expect(ready == .ready(Ready(version: "0.3.1", build: "b", index: "/i", meaning: .unloaded)))
     #expect(Event.decode(Data(#"{"event":"meaning","state":"loading"}"#.utf8)) == .meaning(.loading, error: nil))
-    let indexer = Event.decode(
-        Data(#"{"event":"indexer","pid":7,"state":"indexing","detail":null,"done":3,"total":4,"updated":1}"#.utf8))
-    guard case .indexer(let status)? = indexer else {
+    guard case .indexer(let status)? = Event.decode(Data(indexerLine.utf8)) else {
         Issue.record("not an indexer event")
         return
     }
-    #expect(status.progress == 0.75)
     #expect(status.isWorking)
+    #expect(status.detail == "Waiting for a charger")
+    #expect(status.rounds.map(\.round) == [.words, .text, .pictures, .speech])
+    let text = try #require(status.rounds.dropFirst().first)
+    #expect(text.state == .running)
+    #expect(text.progress == 0.6)
+    #expect(text.files == 310)
+    #expect(text.secondsLeft == 720.5)
+    #expect(status.rounds[0].secondsLeft == nil)
     #expect(Event.decode(Data(#"{"id":1,"ok":true}"#.utf8)) == nil)
+}
+
+@Test func theStatusReplyCarriesTheRounds() throws {
+    let reply = """
+        {"id":4,"meaning":"ready","error":null,"vectors":6500,"scan":"exact-f32","resident":21000000,
+         "stats":{"files":3,"done":3,"pending":0,"failed":0,"segments":40,"vectors":6500,"by_kind":{"document":3},
+         "bytes":81920},
+         "indexer":{"pid":7,"state":"waiting","detail":"Waiting: config.json can't be read: reading.depth",
+         "rounds":[],"current":null,"updated":1,"last_error":null}}
+        """
+    let status = try JSONDecoder().decode(Status.self, from: Data(reply.utf8))
+    #expect(status.indexer?.state == .waiting)
+    #expect(status.indexer?.detail == "Waiting: config.json can't be read: reading.depth")
+    #expect(status.indexer?.rounds == [])
+    #expect(status.indexer?.isWorking == false)
+}
+
+@Test func estimatesSayWhatEachRoundTakes() throws {
+    let line = """
+        [{"folder":"/Users/me/Movies","files":1234,
+          "rounds":[{"round":"words","total":1234,"unit":"files","seconds":40},
+                    {"round":"text","total":20000,"unit":"passages","seconds":330},
+                    {"round":"pictures","total":900,"unit":"pictures","seconds":110},
+                    {"round":"sound","total":36000,"unit":"seconds","seconds":370},
+                    {"round":"speech","total":36000,"unit":"seconds","seconds":165}],
+          "seconds":850,"bytes":123456789,"by_kind":{"video":900,"audio":334},"unreadable":false}]
+        """
+    let estimate = try #require(try JSONDecoder().decode([Estimate].self, from: Data(line.utf8)).first)
+    #expect(estimate.folder == "/Users/me/Movies")
+    #expect(estimate.rounds.count == 5)
+    #expect(estimate.rounds[1] == RoundEstimate(round: .text, total: 20000, unit: "passages", seconds: 330))
+    #expect(estimate.byKind["video"] == 900)
+    #expect(estimate.seconds(at: .speech) == 850)
+    // Speech runs beside the rest, on its own chip: leaving it out saves nothing here.
+    #expect(estimate.seconds(at: .meaning) == 850)
+    #expect(estimate.seconds(at: .words) == 40)
+}
+
+@Test func aFolderReadLessDeeplyHasARuleOfItsOwn() throws {
+    let rules = try JSONDecoder().decode(
+        [JSON].self,
+        from: Data(
+            """
+            [{"path":"*.psd","depth":"words"},{"path":"~/Movies/**","depth":"meaning"},
+             {"path":"~/Movies/**","video":{"keep_every_s":10}}]
+            """.utf8))
+    let movies = "/Users/me/Movies"
+    let music = "/Users/me/Music"
+    let lower = Depth.rules(rules, reading: [movies: .words, music: .meaning], home: "/Users/me")
+    #expect(
+        JSON.array(lower).text
+            == #"[{"depth":"words","path":"*.psd"},{"path":"~/Movies/**","video":{"keep_every_s":10}},"#
+            + #"{"depth":"words","path":"~/Movies/**"},{"depth":"meaning","path":"~/Music/**"}]"#)
+    // Read in full again, each loses its rule; the rules it didn't make stay.
+    let full = Depth.rules(lower, reading: [movies: .speech, music: .speech], home: "/Users/me")
+    #expect(full == [rules[0], rules[2]])
+}
+
+@Test func milestonesSayWhatCanBeFoundAlready() throws {
+    guard case .indexer(let status)? = Event.decode(Data(indexerLine.utf8)) else {
+        Issue.record("not an indexer event")
+        return
+    }
+    #expect(Milestones.next(status) == "Searchable by words · documents by meaning 60% · about 12 min")
+    #expect(
+        Milestones.notYet(status)
+            == "Documents: 60% by meaning · Photos: 0% looked at · Recordings: 40% written down")
+    let states = status.rounds.map { Milestones.state(of: $0, in: status) }
+    #expect(states == [nil, "60% · about 12 min", "Waiting for its turn", "40% · waiting for a charger"])
+
+    let starting = IndexerStatus(
+        pid: 7, state: .indexing,
+        rounds: [
+            RoundStatus(round: .words, state: .running, done: 0, total: 40),
+            RoundStatus(round: .speech, state: .queued),
+        ])
+    #expect(Milestones.next(starting) == "Every file by its name and words 0%")
+    #expect(Milestones.state(of: starting.rounds[0], in: starting) == "Starting…")
+    let done = IndexerStatus(pid: 7, state: .idle, rounds: [RoundStatus(round: .words, state: .done)])
+    #expect(Milestones.next(done) == nil)
+    #expect(Milestones.notYet(done) == nil)
 }
 
 @Test func placesAreSaidAsInRaycast() throws {
@@ -76,6 +173,9 @@ let videoHit = """
     #expect(Format.folder(of: "/Users/me/Videos/a.mp4", home: "/Users/me") == "~/Videos")
     #expect(Format.shortPath("/Users/meg/a", home: "/Users/me") == "/Users/meg/a")
     #expect(Format.bytes(4_115_376) == "3.9 MB")
+    #expect(Format.duration(42) == "under a minute")
+    #expect(Format.duration(720) == "about 12 min")
+    #expect(Format.duration(7300) == "about 2 h")
     #expect(Format.words(of: "Hond, die het water-in rent!") == ["hond", "die", "het", "water", "in", "rent"])
 }
 

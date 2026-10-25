@@ -1,5 +1,25 @@
 # Changelog
 
+## [Unreleased]
+
+Progress you can read: what can be found already, and what comes next.
+
+- Indexing goes in rounds, and the app says each as a milestone: every file by its name and words (within seconds),
+  documents by meaning, text in screenshots and scans, photos by what's in them, what sounds and video scenes
+  contain, and what's said in recordings.
+- The menu bar says what can be searched by already and how far the next milestone is, with its time left ("Searchable
+  by words · documents by meaning 60% · about 12 min"), and what the rest waits for: a charger, memory, a model.
+- While rounds are left, a quiet line under the search results says what can't be found yet ("Recordings: 40%
+  written down").
+- The welcome window shows what each milestone takes for each folder before indexing starts, and offers to leave the
+  slow ones out of a huge folder (its depth, in `reading.rules`). Once indexing starts, it shows the milestones as
+  they're reached.
+- Settings → Index shows the milestones, and what indexing does on battery: read new files' words, everything, or
+  wait for a charger.
+- The models are 1.5 GB, kept in the shared Hugging Face cache. Uninstalling with `--zap` leaves them there, and now
+  removes the compiled speech and text recognition models in `~/Library/Caches`.
+- About Sift It lists the parts it's made with, and their licences.
+
 ## [0.4.0] — 2026-10-24
 
 One install: `brew install jwa91/tap/sift-it` brings the app and the `sift-it` command, and the app sets up the rest.
