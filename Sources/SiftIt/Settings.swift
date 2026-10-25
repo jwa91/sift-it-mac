@@ -267,6 +267,8 @@ private struct FolderSettings: View {
     @State private var skipped: String?
     /// Whether each kind of file is read, once known.
     @State private var reading: [Kind: Bool] = [:]
+    /// A kind with files in the index, about to be left out: what leaves with it.
+    @State private var leaving: (kind: Kind, files: String)?
     @State private var problem: String?
 
     /// The kinds of files offered, with what each takes in. Screenshots are pictures macOS marked as one.
@@ -362,6 +364,16 @@ private struct FolderSettings: View {
             }
         }
         .formStyle(.grouped)
+        .confirmationDialog(
+            leaving.map { "Leave out \(Format.kindsName($0.kind))?" } ?? "",
+            isPresented: Binding(get: { leaving != nil }, set: { if !$0 { leaving = nil } }),
+            titleVisibility: .visible, presenting: leaving
+        ) { leaving in
+            Button("Leave Out", role: .destructive) { read(leaving.kind, false) }
+            Button("Cancel", role: .cancel) {}
+        } message: { leaving in
+            Text(leaving.files)
+        }
         .task { change(nil, []) }
         .task {
             do {
@@ -376,27 +388,41 @@ private struct FolderSettings: View {
         }
     }
 
-    /// Whether a kind is read, in every folder: its file types in `sources.kinds`, where an empty list reads none and
-    /// null puts the types back; code has `sources.code`. The indexer follows at once, adding or taking out its files.
+    /// Whether a kind is read. Leaving out one with files in the index asks first: they leave it, and coming back
+    /// they're indexed again, transcripts and all.
     private func reads(_ kind: Kind) -> Binding<Bool> {
         Binding(
             get: { reading[kind] ?? false },
             set: { on in
-                reading[kind] = on
+                guard !on else { return read(kind, true) }
                 Task {
-                    do {
-                        if kind == .code {
-                            try await engine.set("sources.code", to: on ? "true" : "false")
-                        } else {
-                            try await engine.set("sources.kinds.\(kind.rawValue)", to: on ? "null" : "[]")
-                        }
-                        problem = nil
-                    } catch {
-                        reading[kind] = !on
-                        problem = error.localizedDescription
+                    let indexed = await engine.refreshStatus()?.stats.byKind ?? [:]
+                    if let files = Format.leaving(kind, indexed: indexed) {
+                        leaving = (kind, files)
+                    } else {
+                        read(kind, false)
                     }
                 }
             })
+    }
+
+    /// Reads a kind or not, in every folder: its file types in `sources.kinds`, where an empty list reads none and null
+    /// puts the types back; code has `sources.code`. The indexer follows at once, adding or taking out its files.
+    private func read(_ kind: Kind, _ on: Bool) {
+        reading[kind] = on
+        Task {
+            do {
+                if kind == .code {
+                    try await engine.set("sources.code", to: on ? "true" : "false")
+                } else {
+                    try await engine.set("sources.kinds.\(kind.rawValue)", to: on ? "null" : "[]")
+                }
+                problem = nil
+            } catch {
+                reading[kind] = !on
+                problem = error.localizedDescription
+            }
+        }
     }
 
     /// A folder's phase: changing it writes its rule in `reading.rules`.

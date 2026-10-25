@@ -132,6 +132,18 @@ let indexerLine = """
         Kind.all.map(Format.kindsName) == [
             "Documents", "Text", "Pictures", "Screenshots", "Audio", "Videos", "Code", "Data",
         ])
+    #expect(
+        Format.leaving(.audio, indexed: ["audio": 85, "document": 3])
+            == "85 audio files leave the index, transcripts included. Turning Audio on again indexes them again, "
+            + "which can take a long time.")
+    #expect(
+        Format.leaving(.image, indexed: ["image": 240, "screenshot": 1])
+            == "240 pictures and 1 screenshot leave the index. Turning Pictures on again indexes them again, "
+            + "which can take a long time.")
+    #expect(
+        Format.leaving(.document, indexed: ["document": 1])
+            == "1 document leaves the index. Turning Documents on again indexes it again, which can take a long time.")
+    #expect(Format.leaving(.video, indexed: ["audio": 85, "video": 0]) == nil)
     #expect(Format.shortPath("/Users/meg/a", home: "/Users/me") == "/Users/meg/a")
     #expect(Format.bytes(4_115_376) == "3.9 MB")
     #expect(Format.duration(42) == "under a minute")

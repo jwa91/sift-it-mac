@@ -82,6 +82,25 @@ public enum Format {
         .video: ("video", "videos"), .code: ("code file", "code files"),
     ]
 
+    /// What leaves the index with a kind of file, asked before it's left out: "85 audio files leave the index,
+    /// transcripts included." Pictures take screenshots with them, and code the notes in code projects. nil when none
+    /// of its files is indexed.
+    public static func leaving(_ kind: Kind, indexed byKind: [String: Int]) -> String? {
+        let kinds: [Kind] = kind == .image ? [.image, .screenshot] : [kind]
+        let counts = kinds.compactMap { kind in byKind[kind.rawValue].flatMap { $0 > 0 ? (kind, $0) : nil } }
+        guard !counts.isEmpty else { return nil }
+        let files = counts.map { kindCount($0, $1) }.joined(separator: " and ")
+        let one = counts.count == 1 && counts[0].1 == 1
+        let with =
+            switch kind {
+            case .audio, .video: ", transcripts included"
+            case .code: ", with the notes in code projects"
+            default: ""
+            }
+        return "\(files) \(one ? "leaves" : "leave") the index\(with). Turning \(kindsName(kind)) on again indexes "
+            + "\(one ? "it" : "them") again, which can take a long time."
+    }
+
     /// A path with the home folder as ~.
     public static func shortPath(_ path: String, home: String = NSHomeDirectory()) -> String {
         path == home || path.hasPrefix(home + "/") ? "~" + path.dropFirst(home.count) : path
