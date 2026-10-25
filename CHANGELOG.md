@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.5.2] — 2026-10-25
+
+A real settings window, a say in which kinds of files are indexed, and conversations with Claude Code and Codex to
+search and resume.
+
+- **Settings with a sidebar:** General, Folders, Index, Permissions and About, as a Mac settings window.
+  - **Index** shows the embeddings as a grid of cells, one per percent, coloured by the kind of file they're from, with
+    each kind's count and share, beside the three-phase bar.
+  - **Permissions** shows whether Sift It may open PDFs at the page and play audio and video from the moment, and
+    follows a grant made in System Settings while the window is open. The welcome window has the same page, which can
+    be skipped.
+  - **About** has the version, janwillemaltink.com, the GitHub page and the parts Sift It is made with.
+- **Kinds of files**, one list for every folder (Settings → Folders): Documents, Text, Data, Pictures, Audio, Videos,
+  Code and Conversations. What's always left out says so in one line. Leaving out a kind with indexed files asks first,
+  with how many files leave the index.
+- **Conversations:** Claude Code's and Codex's sessions are found by what was asked and answered, shown with their
+  title and day, and ↩ resumes one in the terminal, in the folder it started in (⌘C copies the command). The welcome
+  window and Settings → Folders offer their folders when they're there.
+- **Audio, not recordings,** everywhere.
+- **Fixes:** the shortcut works again after the shortcut button was clicked and its page left; the welcome window
+  shows whenever the models or the folders aren't there, even with settings left behind; no separator at zero results.
+- **iCloud:** files kept only in iCloud are found by name and read once they're downloaded; Sift It never downloads
+  them, and keeps what it indexed when macOS removes a download.
+- **The app ships with sift-it 0.4.3** (`ENGINE_VERSION`), which also brings `sift-it mcp`: Sift It as a read-only
+  MCP server for agents such as Claude Code, Claude Desktop and Codex, with a skill beside it (see sift-it's README).
+
 ## [0.5.1] — 2026-10-25
 
 One language, one flow: the app says how far indexing is in three words, everywhere, and asks for nothing before
