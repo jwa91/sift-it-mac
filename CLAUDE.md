@@ -16,6 +16,10 @@ Apple silicon. It's a client of sift-it's engine and nothing more, and it ships 
   thread, nothing decodes larger than it's shown, and nothing loads before it's needed (the settings' SwiftUI views
   exist only while the window is open).
 - **The panel is AppKit.** SwiftUI only for the settings.
+- **One language.** Indexing is said in three phases, everywhere: Exact (names, words, and text in screenshots and
+  scans), Embeddings (text, pictures and sound by meaning) and Transcribed (what's said). The engine's rounds map onto
+  them in Phases.swift only, and each is explained in its one sentence there (`Phase.explanation`). Search with
+  embeddings, Index up to and On battery use the same words.
 - **Say the same as the other front ends.** Labels and places ("p. 3", "0:42", "Line 12") follow the Raycast
   extension's; opening at a place goes through `sift-it open`, the same rule as the CLI's.
 
@@ -23,12 +27,12 @@ Apple silicon. It's a client of sift-it's engine and nothing more, and it ships 
 
 ```
 Sources/SiftItKit/   the protocol (Protocol.swift), the socket (EngineConnection.swift), where things are
-                     (Places.swift), how results are said (Format.swift), how far indexing is, as milestones
-                     (Milestones.swift). Foundation only, tested.
+                     (Places.swift), how results are said (Format.swift), how far indexing is, in three phases
+                     (Phases.swift). Foundation only, tested.
 Sources/SiftIt/      the app: App, Engine (the connection kept up), SearchController (the panel), SearchPanel,
                      ResultsList, Preview, Playback, Images, Actions, Hotkey, StatusItem, Settings, Permissions,
-                     Setup (the model, the folders, indexing in the background), Welcome (its first-run window),
-                     MilestoneList (the milestones, for the welcome window and the settings) and About
+                     Setup (the models, the folders, indexing in the background), Welcome (its first-run window),
+                     PhaseProgress (the three-phase bar, for the welcome window and the settings) and About
 Tests/               SiftItKit's tests, with a fake engine on a real socket
 scripts/             bundle.sh (the .app), fetch-engine.sh (the sift-it release in ENGINE_VERSION, checked),
                      codesign.sh (Developer ID, notarizing, stapling), release.sh (the GitHub release and the cask),

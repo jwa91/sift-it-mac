@@ -1,5 +1,5 @@
-// The search panel: a bar until there's something to show, then the results beside a preview of the selected one, and
-// while indexing has rounds left, a line under them that says what can't be found yet.
+// The search panel: a bar with a gear for the settings until there's something to show, then the results beside a
+// preview of the selected one, and while indexing has phases left, a quiet line under them that names those.
 //
 // Every keystroke asks for results by words, answered at once. Once typing pauses, the same query is asked by meaning,
 // and those results replace the others. A reply for an older query is dropped.
@@ -38,6 +38,7 @@ final class SearchController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
     private let message = NSTextField(wrappingLabelWithString: "")
     private let footer = NSView()
     private let notYet = NSTextField(labelWithString: "")
+    private let gear = NSButton()
     private var footerHeight: NSLayoutConstraint!
 
     private var query = ""
@@ -76,11 +77,11 @@ final class SearchController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         followIndexing()
     }
 
-    /// Says what can't be found yet while the indexer has rounds left, so a missing hit isn't taken for a bad result:
-    /// "Recordings: 40% written down". The line is laid out only when it comes or goes.
+    /// Names the phases that aren't done while the indexer has some left, so a missing hit isn't taken for a bad
+    /// result: "Embeddings 60% · Transcribed waiting". The line is laid out only when it comes or goes.
     private func followIndexing() {
         withObservationTracking {
-            let line = engine.isConnected ? engine.indexer.flatMap(Milestones.notYet) : nil
+            let line = engine.isConnected ? engine.indexer.flatMap { Phases.notDone($0) } : nil
             notYet.stringValue = line ?? ""
             notYet.toolTip = line
             footer.isHidden = line == nil
@@ -240,11 +241,11 @@ final class SearchController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         setExpanded(true)
     }
 
-    /// Why a search was by words only.
+    /// Why a search was Exact only.
     private var meaningNote: String {
         switch engine.meaning {
-        case .unavailable: engine.meaningError.map { "Words only: \($0)" } ?? "Words only"
-        default: "Words only, while the model loads…"
+        case .unavailable: engine.meaningError.map { "Exact only: \($0)" } ?? "Exact only"
+        default: "Exact only, while embeddings load…"
         }
     }
 
@@ -302,13 +303,16 @@ final class SearchController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
             if let editor = field.currentEditor(), editor.selectedRange.length > 0 { return false }
             hit.map(Actions.copyFile)
         case ("c", true): hit.map(Actions.copyPath)
-        case (",", false):
-            hide()
-            openSettings()
+        case (",", false): showSettings()
         case ("w", false): hide()
         default: return false
         }
         return true
+    }
+
+    @objc private func showSettings() {
+        hide()
+        openSettings()
     }
 
     private func open(_ hit: Hit) {
@@ -380,6 +384,15 @@ final class SearchController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         spinner.style = .spinning
         spinner.controlSize = .small
         spinner.isDisplayedWhenStopped = false
+        // The settings, a click away: also when the menu bar icon hides behind the notch.
+        gear.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "Settings")?
+            .withSymbolConfiguration(.init(pointSize: 15, weight: .regular))
+        gear.isBordered = false
+        gear.contentTintColor = .tertiaryLabelColor
+        gear.toolTip = "Settings (⌘,)"
+        gear.target = self
+        gear.action = #selector(showSettings)
+        gear.refusesFirstResponder = true
 
         separator.boxType = .separator
         separator.isHidden = true
@@ -400,7 +413,7 @@ final class SearchController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         footer.addSubview(notYet)
         footer.isHidden = true
 
-        for view in [icon, field, note, spinner, separator, body] as [NSView] {
+        for view in [icon, field, note, spinner, gear, separator, body] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(view)
         }
@@ -418,8 +431,10 @@ final class SearchController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
             field.trailingAnchor.constraint(equalTo: note.leadingAnchor, constant: -8),
             note.trailingAnchor.constraint(equalTo: spinner.leadingAnchor, constant: -8),
             note.centerYAnchor.constraint(equalTo: icon.centerYAnchor),
-            spinner.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -20),
+            spinner.trailingAnchor.constraint(equalTo: gear.leadingAnchor, constant: -10),
             spinner.centerYAnchor.constraint(equalTo: icon.centerYAnchor),
+            gear.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -18),
+            gear.centerYAnchor.constraint(equalTo: icon.centerYAnchor),
 
             separator.topAnchor.constraint(equalTo: root.topAnchor, constant: bar),
             separator.leadingAnchor.constraint(equalTo: root.leadingAnchor),

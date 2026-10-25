@@ -96,7 +96,7 @@ cask "sift-it" do
   ]
 
   caveats <<~EOS
-    Open Sift It to set it up: it downloads its model and asks which folders to search.
+    Open Sift It to set it up: it downloads its models (1.5 GB) and asks which folders to search.
     Then Control-Shift-Space opens the search from any app.
   EOS
 end

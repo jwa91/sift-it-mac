@@ -12,7 +12,7 @@ enum About {
     /// What the app ships, what that's built with, and the models it downloads.
     private static let parts: [(name: String, url: String, licence: String, role: String)] = [
         ("sift-it", "https://github.com/jwa91/sift-it", "MIT License", "the engine and the indexer, in the app"),
-        ("llama.cpp", "https://github.com/ggml-org/llama.cpp", "MIT License", "runs the model, in sift-it"),
+        ("llama.cpp", "https://github.com/ggml-org/llama.cpp", "MIT License", "runs EmbeddingGemma 2, in sift-it"),
         (
             "FluidAudio", "https://github.com/FluidInference/FluidAudio", "Apache License 2.0",
             "by FluidInference, in sift-it-transcribe"

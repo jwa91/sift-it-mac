@@ -1,5 +1,10 @@
 // The permissions opening a result at its place needs, asked for once and explained.
 //
+// Reading folders needs none of this: macOS asks once for each protected folder (Documents, Desktop, Downloads), as
+// Sift It, when the welcome window counts it right after it was chosen. The indexer and the engine run the sift-it in
+// Contents/Helpers, and macOS counts what a program inside the app reads as the app's (tccd's bundle attribution), so
+// they read the same folders without asking again.
+//
 // `sift-it open` drives other apps with AppleScript, and macOS counts that as Sift It's doing:
 // - a recording or video at its moment: QuickTime Player (Automation; macOS asks the first time by itself)
 // - a PDF at its page: Preview and System Events (Automation), and Go to Page typed into Preview (Accessibility,

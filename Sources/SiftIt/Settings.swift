@@ -1,5 +1,5 @@
-// The settings: the shortcut, opening at login, how to search, the folders to index, indexing in the background and
-// how far it is. The window and its views exist only while it's open.
+// The settings: the shortcut, opening at login and searching with embeddings; the folders, each indexed up to a phase;
+// how far indexing is, the models, and what goes on on battery. The window and its views exist only while it's open.
 
 import ServiceManagement
 import SiftItKit
@@ -53,12 +53,12 @@ private struct SettingsView: View {
         TabView {
             GeneralSettings(engine: engine, hotkey: hotkey)
                 .tabItem { Label("General", systemImage: "gearshape") }
-            FolderSettings(engine: engine)
+            FolderSettings(engine: engine, setup: setup)
                 .tabItem { Label("Folders", systemImage: "folder") }
             IndexSettings(engine: engine, setup: setup, openWelcome: openWelcome)
                 .tabItem { Label("Index", systemImage: "chart.bar.doc.horizontal") }
         }
-        .frame(width: 500, height: 440)
+        .frame(width: 520, height: 500)
     }
 }
 
@@ -68,7 +68,7 @@ private struct GeneralSettings: View {
     let engine: Engine
     let hotkey: Hotkey
     @State private var atLogin = SMAppService.mainApp.status == .enabled
-    @State private var mode = "meaning"
+    @State private var embeddings = true
     @State private var problem: String?
 
     var body: some View {
@@ -84,12 +84,12 @@ private struct GeneralSettings: View {
                         problem = error.localizedDescription
                     }
                 }
-            Picker("Search by", selection: $mode) {
-                Text("Meaning and words").tag("meaning")
-                Text("Words only").tag("words")
+            Toggle(isOn: $embeddings) {
+                Text("Search with embeddings")
+                Text(Phase.embeddings.explanation + " Off, searches are Exact only.")
             }
-            .onChange(of: mode) { _, mode in
-                Task { try? await engine.set("search.mode", to: mode) }
+            .onChange(of: embeddings) { _, on in
+                Task { try? await engine.set("search.mode", to: on ? Mode.meaning.rawValue : Mode.words.rawValue) }
             }
             if let problem {
                 Text(problem).foregroundStyle(.secondary)
@@ -98,7 +98,9 @@ private struct GeneralSettings: View {
         }
         .formStyle(.grouped)
         .task {
-            if let mode = try? await engine.setting("search.mode", as: String.self) { self.mode = mode }
+            if let mode = try? await engine.setting("search.mode", as: String.self) {
+                embeddings = mode != Mode.words.rawValue
+            }
         }
     }
 }
@@ -210,20 +212,52 @@ private struct PermissionSettings: View {
 
 private struct FolderSettings: View {
     let engine: Engine
+    let setup: Setup
     @State private var folders: Folders?
+    /// The phase each folder is indexed up to.
+    @State private var phases: [String: Phase] = [:]
     @State private var selected: String?
     @State private var skipped: String?
     @State private var problem: String?
 
     var body: some View {
         Form {
-            Section("Search the files in") {
-                FolderList(paths: folders?.folders ?? [], selection: $selected)
+            Section {
+                if let paths = folders?.folders, !paths.isEmpty {
+                    List(paths, id: \.self, selection: $selected) { path in
+                        HStack {
+                            Label(Format.shortPath(path), systemImage: "folder")
+                            Spacer()
+                            Picker("Index up to", selection: phase(of: path)) {
+                                ForEach(Phase.allCases, id: \.self) { Text($0.name).tag($0) }
+                            }
+                            .labelsHidden()
+                            .fixedSize()
+                        }
+                    }
+                    .frame(minHeight: 70, maxHeight: 130)
+                } else {
+                    Text("None").foregroundStyle(.secondary)
+                }
                 HStack {
                     Button("Add Folders…") { choose { change(.add, $0) } }
                     Button("Remove") { selected.map { change(.remove, [$0]) } }
                         .disabled(selected == nil)
                 }
+            } header: {
+                HStack {
+                    Text("Search the files in")
+                    Spacer()
+                    Text("Index up to")
+                }
+            } footer: {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(Phase.allCases, id: \.self) { phase in
+                        Text("**\(phase.name)**: \(phase.explanation)")
+                    }
+                }
+                .font(.callout)
+                .foregroundStyle(.secondary)
             }
             Section("But skip") {
                 FolderList(paths: folders?.excluded ?? [], selection: $skipped)
@@ -241,10 +275,29 @@ private struct FolderSettings: View {
         .task { change(nil, []) }
     }
 
+    /// A folder's phase: changing it writes its rule in `reading.rules`.
+    private func phase(of path: String) -> Binding<Phase> {
+        Binding(
+            get: { phases[path] ?? .transcribed },
+            set: { phase in
+                phases[path] = phase
+                Task {
+                    do {
+                        try await setup.index(upTo: [path: phase])
+                        problem = nil
+                    } catch {
+                        problem = error.localizedDescription
+                    }
+                }
+            })
+    }
+
     private func change(_ action: FolderAction?, _ paths: [String]) {
         Task {
             do {
-                folders = try await engine.folders(action, paths: paths)
+                let folders = try await engine.folders(action, paths: paths)
+                phases = try await setup.phases(of: folders.folders)
+                self.folders = folders
                 problem = nil
             } catch {
                 problem = error.localizedDescription
@@ -289,19 +342,43 @@ private struct IndexSettings: View {
 
     var body: some View {
         Form {
-            if let indexer = engine.indexer, indexer.rounds.contains(where: { $0.state != .done }) {
-                Section("What can be found") {
-                    MilestoneList(indexer: indexer)
+            if let indexer = engine.indexer, indexer.phases.contains(where: { !$0.isDone }) {
+                Section("Indexing") {
+                    PhaseProgress(indexer: indexer, explained: false)
+                        .padding(.vertical, 4)
                 }
             }
             Section {
-                LabeledContent("Engine", value: engineState)
-                LabeledContent("Search by meaning", value: meaningState)
                 if let stats = engine.status?.stats {
                     LabeledContent("Files", value: stats.files.formatted())
                     LabeledContent("Of which", value: kinds(stats))
                     LabeledContent("On disk", value: Format.bytes(stats.bytes))
                 }
+                LabeledContent("Engine", value: engineState)
+            }
+            Section {
+                ForEach(Setup.Model.allCases, id: \.self) { model in
+                    LabeledContent {
+                        Text(state(of: model))
+                    } label: {
+                        Text(model.name)
+                        Text("\(model.about) · \(megabytes(model.bytes))")
+                    }
+                }
+                switch setup.models {
+                case .missing, .failed:
+                    Button("Download the Models (\(megabytes(Setup.Model.bytes)))") { setup.downloadModels() }
+                case .downloading(let done, let total):
+                    ProgressView(value: Double(done), total: Double(max(total, 1))) { Text("Downloading the models…") }
+                default:
+                    EmptyView()
+                }
+            } header: {
+                Text("Models")
+            } footer: {
+                Text("Text in screenshots and scans is read by macOS itself.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             }
             Section {
                 Toggle(
@@ -312,7 +389,6 @@ private struct IndexSettings: View {
                     Text("From login on, new and changed files are indexed as they come.")
                 }
                 Picker(
-                    "On battery",
                     selection: Binding(
                         get: { onBattery },
                         set: { value in
@@ -320,17 +396,12 @@ private struct IndexSettings: View {
                             change { try await engine.set("indexing.on_battery", to: value) }
                         })
                 ) {
-                    Text("Read new files' words").tag("words")
-                    Text("Read everything").tag("all")
-                    Text("Wait for a charger").tag("none")
-                }
-                switch setup.model {
-                case .missing, .failed:
-                    Button("Download the Model (1.5 GB)") { setup.downloadModel() }
-                case .downloading(let done, let total):
-                    ProgressView(value: Double(done), total: Double(max(total, 1))) { Text("Downloading the model…") }
-                default:
-                    EmptyView()
+                    Text("Exact only").tag("words")
+                    Text("Everything").tag("all")
+                    Text("Pause").tag("none")
+                } label: {
+                    Text("On battery")
+                    Text("With Exact only, new files still go through every phase; the rest waits for a charger.")
                 }
                 Button("Set Up Again…", action: openWelcome)
                 if let problem {
@@ -366,12 +437,18 @@ private struct IndexSettings: View {
         }
     }
 
-    private var meaningState: String {
+    /// Whether a model is there, and EmbeddingGemma's state in the engine: it loads with the first search.
+    private func state(of model: Setup.Model) -> String {
+        guard setup.has(model) else {
+            if case .downloading = setup.models { return "Downloading…" }
+            return "Not downloaded"
+        }
+        guard model == .embeddings else { return "Ready" }
         switch engine.meaning {
-        case .ready: "Ready"
-        case .loading: "Loading…"
-        case .unavailable: engine.meaningError ?? "Unavailable"
-        default: "Loads with the first search"
+        case .ready: return "Ready"
+        case .loading: return "Loading…"
+        case .unavailable: return engine.meaningError ?? "Unavailable"
+        default: return "Loads with the first search"
         }
     }
 
@@ -380,5 +457,4 @@ private struct IndexSettings: View {
             .map { "\($0.value) \(Format.kindName(Kind(rawValue: $0.key)).lowercased())" }
             .joined(separator: ", ")
     }
-
 }
