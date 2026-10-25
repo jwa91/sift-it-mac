@@ -113,3 +113,14 @@ private func indexer(_ rounds: RoundStatus..., state: IndexerState = .indexing) 
     let full = Phase.rules(lower, indexing: [movies: .transcribed, music: .transcribed], home: "/Users/me")
     #expect(full == [rules[0], rules[2]])
 }
+
+@Test func withoutAudioOrVideoThereIsNothingToTranscribe() {
+    // Audio and Videos left out: their files leave the index, and with them the sound and speech rounds' work.
+    let read = indexer(
+        RoundStatus(round: .words, state: .done, done: 466, total: 466),
+        RoundStatus(round: .text, state: .running, done: 600, total: 1000, files: 30, secondsLeft: 300),
+        RoundStatus(round: .pictures, state: .queued, done: 0, total: 428, files: 428))
+    #expect(read.phases.map(\.phase) == [.exact, .embeddings])
+    #expect(Phases.summary(read) == "Exact ✓ · Embeddings 30% · about 5 min")
+    #expect(Phases.notDone(read) == "Embeddings 30%")
+}

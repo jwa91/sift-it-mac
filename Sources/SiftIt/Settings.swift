@@ -1,7 +1,8 @@
 // The settings, in a window with a sidebar as macOS's own: its title is the pane shown, it opens at the pane shown last,
 // and it neither minimizes nor zooms. General: the shortcut, opening at login and searching with embeddings. Folders:
-// each indexed up to a phase. Index: how far indexing is, the embeddings by kind, the models, and what goes on on
-// battery. Permissions: opening results where they matched. About. The window and its views exist only while it's open.
+// each indexed up to a phase, and the kinds of files read in all of them. Index: how far indexing is, the embeddings
+// by kind, the models, and what goes on on battery. Permissions: opening results where they matched. About. The window
+// and its views exist only while it's open.
 
 import ServiceManagement
 import SiftItKit
@@ -264,7 +265,20 @@ private struct FolderSettings: View {
     @State private var phases: [String: Phase] = [:]
     @State private var selected: String?
     @State private var skipped: String?
+    /// Whether each kind of file is read, once known.
+    @State private var reading: [Kind: Bool] = [:]
     @State private var problem: String?
+
+    /// The kinds of files offered, with what each takes in. Screenshots are pictures macOS marked as one.
+    private static let kinds: [(kind: Kind, about: String)] = [
+        (.document, "PDFs, Word and web pages"),
+        (.plaintext, "Plain text and Markdown"),
+        (.structured, "CSV, JSON and YAML"),
+        (.image, "Photos and screenshots"),
+        (.audio, "Music, podcasts and voice memos"),
+        (.video, "Films and screen recordings"),
+        (.code, "Source code, and notes in projects"),
+    ]
 
     var body: some View {
         Form {
@@ -305,6 +319,36 @@ private struct FolderSettings: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
             }
+            Section {
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(), alignment: .topLeading), GridItem(.flexible(), alignment: .topLeading),
+                    ],
+                    alignment: .leading, spacing: 10
+                ) {
+                    ForEach(Self.kinds, id: \.kind) { kind, about in
+                        Toggle(isOn: reads(kind)) {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(Format.kindsName(kind))
+                                Text(about).font(.callout).foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .toggleStyle(.checkbox)
+                        .disabled(reading[kind] == nil)
+                    }
+                }
+                .padding(.vertical, 4)
+            } header: {
+                Text("Kinds of files")
+            } footer: {
+                Text(
+                    "Always left out: hidden files and folders, apps and libraries, dependency and build folders, "
+                        + "keys and secrets."
+                )
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            }
             Section("But skip") {
                 FolderList(paths: folders?.excluded ?? [], selection: $skipped)
                 HStack {
@@ -319,6 +363,40 @@ private struct FolderSettings: View {
         }
         .formStyle(.grouped)
         .task { change(nil, []) }
+        .task {
+            do {
+                let lists = try await engine.setting("sources.kinds", as: [String: [String]].self)
+                let code = try await engine.setting("sources.code", as: Bool.self)
+                for (kind, _) in Self.kinds {
+                    reading[kind] = kind == .code ? code : lists[kind.rawValue]?.isEmpty == false
+                }
+            } catch {
+                problem = error.localizedDescription
+            }
+        }
+    }
+
+    /// Whether a kind is read, in every folder: its file types in `sources.kinds`, where an empty list reads none and
+    /// null puts the types back; code has `sources.code`. The indexer follows at once, adding or taking out its files.
+    private func reads(_ kind: Kind) -> Binding<Bool> {
+        Binding(
+            get: { reading[kind] ?? false },
+            set: { on in
+                reading[kind] = on
+                Task {
+                    do {
+                        if kind == .code {
+                            try await engine.set("sources.code", to: on ? "true" : "false")
+                        } else {
+                            try await engine.set("sources.kinds.\(kind.rawValue)", to: on ? "null" : "[]")
+                        }
+                        problem = nil
+                    } catch {
+                        reading[kind] = !on
+                        problem = error.localizedDescription
+                    }
+                }
+            })
     }
 
     /// A folder's phase: changing it writes its rule in `reading.rules`.
