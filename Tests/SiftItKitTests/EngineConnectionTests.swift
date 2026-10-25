@@ -4,7 +4,12 @@ import Testing
 @testable import SiftItKit
 
 /// An engine that says it's ready and then answers as it's told: enough to test the connection against a real socket.
+///
+/// Its waits block a thread of their own, never the test's: that's one of the few threads Swift runs every task on,
+/// and blocking them all (three, on a CI runner) keeps the very request a test waits for from being written. They
+/// give up after `patience`, so a test that goes wrong fails rather than hangs.
 final class FakeEngine: @unchecked Sendable {
+    static let patience: TimeInterval = 10
     let address: String
     private let listener: Int32
     private var client: Int32 = -1
@@ -30,6 +35,8 @@ final class FakeEngine: @unchecked Sendable {
         guard bound == 0, listen(listener, 1) == 0 else { throw EngineError.unreachable("can't listen") }
         Thread.detachNewThread { [self] in
             client = accept(listener, nil, nil)
+            var limit = timeval(tv_sec: Int(Self.patience), tv_usec: 0)
+            setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &limit, socklen_t(MemoryLayout<timeval>.size))
             say(#"{"event":"ready","version":"0.3.1","build":"test","index":"/i","meaning":"ready"}"#)
             accepted.signal()
         }
@@ -40,19 +47,31 @@ final class FakeEngine: @unchecked Sendable {
         unlink(address)
     }
 
-    func waitForClient() { accepted.wait() }
+    func waitForClient() async throws {
+        let came = await offThread { self.accepted.wait(timeout: .now() + Self.patience) }
+        if came == .timedOut { throw EngineError.unreachable("no client in \(Self.patience) s") }
+    }
 
     func say(_ line: String) {
         let bytes = Array((line + "\n").utf8)
         _ = bytes.withUnsafeBytes { write(client, $0.baseAddress!, $0.count) }
     }
 
-    /// The next request's line.
-    func heard() -> [String: Any] {
-        var line = [UInt8]()
-        var byte: UInt8 = 0
-        while read(client, &byte, 1) == 1, byte != 0x0A { line.append(byte) }
-        return (try? JSONSerialization.jsonObject(with: Data(line))) as? [String: Any] ?? [:]
+    /// The next request's line: empty when none comes in time.
+    func heard() async -> [String: Any] {
+        let line = await offThread { [client] in
+            var line = Data()
+            var byte: UInt8 = 0
+            while read(client, &byte, 1) == 1, byte != 0x0A { line.append(byte) }
+            return line
+        }
+        return (try? JSONSerialization.jsonObject(with: line)) as? [String: Any] ?? [:]
+    }
+
+    private func offThread<Value: Sendable>(_ work: @escaping @Sendable () -> Value) async -> Value {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global().async { continuation.resume(returning: work()) }
+        }
     }
 
     func hangUp() {
@@ -72,19 +91,21 @@ final class Heard: @unchecked Sendable {
     func close() { lock.withLock { _closed = true } }
 }
 
-@Test func repliesFindTheirRequestsInAnyOrder() async throws {
+@Test(.timeLimit(.minutes(1))) func repliesFindTheirRequestsInAnyOrder() async throws {
     let engine = try FakeEngine()
     let heard = Heard()
     let connection = try await EngineConnection.open(
         socketAddress: engine.address, onEvent: heard.add, onClose: heard.close)
-    engine.waitForClient()
+    try await engine.waitForClient()
     #expect(connection.ready.build == "test")
 
     async let first = connection.request(.segmentText(1), as: Text.self)
     async let second = connection.request(.segmentText(2), as: Text.self)
-    let a = engine.heard()
-    let b = engine.heard()
-    let ids = [a, b].map { ($0["id"] as! Int, $0["segment_id"] as! Int) }
+    var ids: [(Int, Int)] = []
+    for _ in 0..<2 {
+        let line = await engine.heard()
+        ids.append((try #require(line["id"] as? Int), try #require(line["segment_id"] as? Int)))
+    }
     // The second asked is answered first, with an event between.
     for (id, segment) in ids.sorted(by: { $0.0 > $1.0 }) {
         engine.say(#"{"id":\#(id),"text":"segment \#(segment)"}"#)
@@ -96,34 +117,34 @@ final class Heard: @unchecked Sendable {
     connection.close()
 }
 
-@Test func aFailureIsThrownAndAHangUpEndsWhatWaits() async throws {
+@Test(.timeLimit(.minutes(1))) func aFailureIsThrownAndAHangUpEndsWhatWaits() async throws {
     let engine = try FakeEngine()
     let heard = Heard()
     let connection = try await EngineConnection.open(
         socketAddress: engine.address, onEvent: heard.add, onClose: heard.close)
-    engine.waitForClient()
+    try await engine.waitForClient()
 
     let failing = Task { try await connection.request(.status, as: Status.self) }
-    let id = engine.heard()["id"] as! Int
+    let id = try #require(await engine.heard()["id"] as? Int)
     engine.say(#"{"id":\#(id),"ok":false,"error":"no index yet"}"#)
     await #expect(throws: EngineError.failed("no index yet")) { try await failing.value }
 
     let waiting = Task { try await connection.request(.status, as: Status.self) }
-    _ = engine.heard()
+    _ = await engine.heard()
     engine.hangUp()
     await #expect(throws: EngineError.closed) { try await waiting.value }
     await #expect(throws: EngineError.closed) { try await connection.request(.status, as: Status.self) }
     #expect(heard.closed)
 }
 
-@Test func theStatusSaysTheEmbeddingsOfEachKind() async throws {
+@Test(.timeLimit(.minutes(1))) func theStatusSaysTheEmbeddingsOfEachKind() async throws {
     let engine = try FakeEngine()
     let connection = try await EngineConnection.open(
         socketAddress: engine.address, onEvent: { _ in }, onClose: {})
-    engine.waitForClient()
+    try await engine.waitForClient()
 
     let asked = Task { try await connection.request(.status, as: Status.self) }
-    let id = engine.heard()["id"] as! Int
+    let id = try #require(await engine.heard()["id"] as? Int)
     engine.say(
         #"{"id":\#(id),"meaning":"ready","error":null,"vectors":1500,"stats":{"files":40,"done":40,"pending":0,"#
             + #""failed":0,"segments":900,"vectors":1500,"by_kind":{"document":30,"image":10},"#

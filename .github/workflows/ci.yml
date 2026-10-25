@@ -23,6 +23,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
 
-      # swift format lint, a build with warnings as errors, and the tests.
+      # swift format lint, a build with warnings as errors, and the tests. In a pseudo-terminal: the test runner
+      # buffers what it writes to a pipe, so a run that's cancelled would show no test at all.
       - name: Run checks
-        run: make check
+        run: script -q /dev/null make check
