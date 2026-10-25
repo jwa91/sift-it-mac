@@ -116,6 +116,24 @@ final class Heard: @unchecked Sendable {
     #expect(heard.closed)
 }
 
+@Test func theStatusSaysTheEmbeddingsOfEachKind() async throws {
+    let engine = try FakeEngine()
+    let connection = try await EngineConnection.open(
+        socketAddress: engine.address, onEvent: { _ in }, onClose: {})
+    engine.waitForClient()
+
+    let asked = Task { try await connection.request(.status, as: Status.self) }
+    let id = engine.heard()["id"] as! Int
+    engine.say(
+        #"{"id":\#(id),"meaning":"ready","error":null,"vectors":1500,"stats":{"files":40,"done":40,"pending":0,"#
+            + #""failed":0,"segments":900,"vectors":1500,"by_kind":{"document":30,"image":10},"#
+            + #""vectors_by_kind":{"document":1200,"image":300},"bytes":4096},"indexer":null}"#)
+    let stats = try await asked.value.stats
+    #expect(stats.vectorsByKind == ["document": 1200, "image": 300])
+    #expect(stats.byKind == ["document": 30, "image": 10])
+    connection.close()
+}
+
 @Test func nothingListeningIsUnreachable() async {
     await #expect(throws: EngineError.self) {
         _ = try await EngineConnection.open(socketAddress: "/tmp/no-such-engine.sock", onEvent: { _ in }, onClose: {})

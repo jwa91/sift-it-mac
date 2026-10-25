@@ -14,6 +14,7 @@ final class StatusItem: NSObject, NSMenuDelegate {
     private var menuIsOpen = false
     var openSearch: () -> Void = {}
     var openSettings: () -> Void = {}
+    var openAbout: () -> Void = {}
     /// Starts indexing in the background.
     var startIndexing: () -> Void = {}
 
@@ -146,7 +147,7 @@ final class StatusItem: NSObject, NSMenuDelegate {
 
     @objc private func search() { openSearch() }
     @objc private func settings() { openSettings() }
-    @objc private func about() { About.show() }
+    @objc private func about() { openAbout() }
     @objc private func startEngine() { engine.start() }
 
     /// The indexer pauses and resumes on SIGUSR2, and looks again on SIGUSR1 (services/indexer.rs).

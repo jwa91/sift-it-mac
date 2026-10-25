@@ -1,54 +1,82 @@
-// About Sift It: its version, and the parts it's made with, each with its licence.
+// About Sift It, the settings' last pane: its version, who made it and where its source is, and the parts it's made
+// with, each with its licence.
 
-import AppKit
+import SwiftUI
 
-@MainActor
-enum About {
-    static func show() {
-        NSApp.activate()
-        NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
+struct AboutPane: View {
+    private struct Part: Identifiable {
+        let name: String
+        let url: String
+        let licence: String
+        let role: String
+        var id: String { name }
     }
 
     /// What the app ships, what that's built with, and the models it downloads.
-    private static let parts: [(name: String, url: String, licence: String, role: String)] = [
-        ("sift-it", "https://github.com/jwa91/sift-it", "MIT License", "the engine and the indexer, in the app"),
-        ("llama.cpp", "https://github.com/ggml-org/llama.cpp", "MIT License", "runs EmbeddingGemma 2, in sift-it"),
-        (
-            "FluidAudio", "https://github.com/FluidInference/FluidAudio", "Apache License 2.0",
-            "by FluidInference, in sift-it-transcribe"
-        ),
-        (
-            "EmbeddingGemma 2", "https://huggingface.co/google/embeddinggemma-2", "Apache License 2.0",
-            "by Google DeepMind, downloaded once"
-        ),
-        (
-            "Parakeet Ultra", "https://huggingface.co/FluidInference/parakeet-ultra-coreml", "CC BY 4.0",
-            "by Moondream, from NVIDIA's Parakeet TDT 0.6B v3, in FluidInference's Core ML conversion, downloaded once"
-        ),
+    private static let parts: [Part] = [
+        Part(
+            name: "sift-it", url: "https://github.com/jwa91/sift-it", licence: "MIT License",
+            role: "The engine and the indexer, in the app"),
+        Part(
+            name: "llama.cpp", url: "https://github.com/ggml-org/llama.cpp", licence: "MIT License",
+            role: "Runs EmbeddingGemma 2, in sift-it"),
+        Part(
+            name: "FluidAudio", url: "https://github.com/FluidInference/FluidAudio", licence: "Apache License 2.0",
+            role: "By FluidInference, in sift-it-transcribe"),
+        Part(
+            name: "EmbeddingGemma 2", url: "https://huggingface.co/google/embeddinggemma-2",
+            licence: "Apache License 2.0", role: "By Google DeepMind, downloaded once"),
+        Part(
+            name: "Parakeet Ultra", url: "https://huggingface.co/FluidInference/parakeet-ultra-coreml",
+            licence: "CC BY 4.0",
+            role: "By Moondream, from NVIDIA's Parakeet TDT 0.6B v3, in FluidInference's Core ML conversion, "
+                + "downloaded once"),
     ]
 
-    private static var credits: NSAttributedString {
-        let text = NSMutableAttributedString()
-        func add(
-            _ string: String, size: CGFloat = 11, weight: NSFont.Weight = .regular, color: NSColor, after: CGFloat,
-            link: String? = nil
-        ) {
-            let paragraph = NSMutableParagraphStyle()
-            paragraph.alignment = .center
-            paragraph.paragraphSpacing = after
-            var attributes: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: size, weight: weight), .foregroundColor: color,
-                .paragraphStyle: paragraph,
-            ]
-            attributes[.link] = link.flatMap(URL.init(string:))
-            text.append(NSAttributedString(string: string, attributes: attributes))
+    private static let site = URL(string: "https://www.janwillemaltink.com")!
+    private static let source = URL(string: "https://github.com/jwa91/sift-it")!
+
+    var body: some View {
+        Form {
+            Section {
+                HStack(spacing: 16) {
+                    Image(nsImage: NSApp.applicationIconImage)
+                        .resizable()
+                        .frame(width: 64, height: 64)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Sift It").font(.title2.weight(.semibold))
+                        Text("Version \(Self.info("CFBundleShortVersionString"))")
+                            .foregroundStyle(.secondary)
+                        Text(Self.info("NSHumanReadableCopyright"))
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 4)
+                LabeledContent("Website") { Link("janwillemaltink.com", destination: Self.site) }
+                LabeledContent("Source code") { Link("github.com/jwa91/sift-it", destination: Self.source) }
+            }
+            Section {
+                ForEach(Self.parts) { part in
+                    LabeledContent {
+                        Text(part.licence)
+                    } label: {
+                        Link(part.name, destination: URL(string: part.url)!)
+                        Text(part.role)
+                    }
+                }
+            } header: {
+                Text("Made with")
+            } footer: {
+                Text("Gemma is a trademark of Google LLC.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
         }
-        for part in parts {
-            add(part.name, weight: .semibold, color: .labelColor, after: 1, link: part.url)
-            add(" · \(part.licence)\n", color: .secondaryLabelColor, after: 1)
-            add(part.role + "\n", color: .secondaryLabelColor, after: 8)
-        }
-        add("Gemma is a trademark of Google LLC.", size: 10, color: .tertiaryLabelColor, after: 0)
-        return text
+        .formStyle(.grouped)
+    }
+
+    private static func info(_ key: String) -> String {
+        Bundle.main.object(forInfoDictionaryKey: key) as? String ?? ""
     }
 }

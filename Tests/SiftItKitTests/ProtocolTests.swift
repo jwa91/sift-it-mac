@@ -87,7 +87,7 @@ let indexerLine = """
     let reply = """
         {"id":4,"meaning":"ready","error":null,"vectors":6500,"scan":"exact-f32","resident":21000000,
          "stats":{"files":3,"done":3,"pending":0,"failed":0,"segments":40,"vectors":6500,"by_kind":{"document":3},
-         "bytes":81920},
+         "vectors_by_kind":{"document":6500},"bytes":81920},
          "indexer":{"pid":7,"state":"waiting","detail":"Waiting: config.json can't be read: reading.depth",
          "rounds":[],"current":null,"updated":1,"last_error":null}}
         """
@@ -128,6 +128,10 @@ let indexerLine = """
     #expect(Format.folder(of: "/Users/me/Videos/a.mp4", home: "/Users/me") == "~/Videos")
     #expect(Format.kindCount(.init(rawValue: "document"), 900) == "900 documents")
     #expect(Format.kindCount(.init(rawValue: "audio"), 1) == "1 audio file")
+    #expect(
+        Kind.all.map(Format.kindsName) == [
+            "Documents", "Text", "Pictures", "Screenshots", "Audio", "Videos", "Code", "Data",
+        ])
     #expect(Format.shortPath("/Users/meg/a", home: "/Users/me") == "/Users/meg/a")
     #expect(Format.bytes(4_115_376) == "3.9 MB")
     #expect(Format.duration(42) == "under a minute")

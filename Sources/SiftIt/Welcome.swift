@@ -1,5 +1,5 @@
-// The welcome window: what Sift It is, its models, the folders to search, indexing in the background and where things
-// are, then how far indexing is, in its three phases. It does what the command line's setup did, so installing the app
+// The welcome window: what Sift It is, its models, the folders to search, opening results where they matched (which can
+// be skipped), indexing in the background and where things are, then how far indexing is, in its three phases. It does what the command line's setup did, so installing the app
 // is all there is to it. No folder is read before it's chosen here. Its views exist only while it's open.
 
 import SiftItKit
@@ -52,7 +52,7 @@ private struct WelcomeView: View {
     let finish: () -> Void
 
     private enum Page: Int, CaseIterable {
-        case hello, models, folders, ready, indexing
+        case hello, models, folders, permissions, ready, indexing
     }
 
     @State private var page = Page.hello
@@ -75,6 +75,7 @@ private struct WelcomeView: View {
                 case .hello: hello
                 case .models: modelsPage
                 case .folders: foldersPage
+                case .permissions: permissionsPage
                 case .ready: readyPage
                 case .indexing: indexingPage
                 }
@@ -206,6 +207,23 @@ private struct WelcomeView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
+        }
+    }
+
+    /// The same as Settings → Permissions, and nothing on it has to be done.
+    private var permissionsPage: some View {
+        PageLayout(
+            symbol: "hand.raised", title: "Open results where they matched",
+            text: """
+                A PDF at its page, audio and video at the moment: macOS asks once whether Sift It may. Without it, results \
+                open at the start. You can skip this, and allow it later in Settings.
+                """
+        ) {
+            PermissionsForm(explained: false)
+                .scrollContentBackground(.hidden)
+                .scrollDisabled(true)
+                .padding(.horizontal, -20)
+                .padding(.top, -16)
         }
     }
 

@@ -1,9 +1,40 @@
-// The settings: the shortcut, opening at login and searching with embeddings; the folders, each indexed up to a phase;
-// how far indexing is, the models, and what goes on on battery. The window and its views exist only while it's open.
+// The settings, in a window with a sidebar as macOS's own: its title is the pane shown, it opens at the pane shown last,
+// and it neither minimizes nor zooms. General: the shortcut, opening at login and searching with embeddings. Folders:
+// each indexed up to a phase. Index: how far indexing is, the embeddings by kind, the models, and what goes on on
+// battery. Permissions: opening results where they matched. About. The window and its views exist only while it's open.
 
 import ServiceManagement
 import SiftItKit
 import SwiftUI
+
+enum SettingsPane: String, CaseIterable, Identifiable {
+    case general, folders, index, permissions, about
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .general: "General"
+        case .folders: "Folders"
+        case .index: "Index"
+        case .permissions: "Permissions"
+        case .about: "About"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .general: "gearshape"
+        case .folders: "folder"
+        case .index: "chart.bar.doc.horizontal"
+        case .permissions: "hand.raised"
+        case .about: "info.circle"
+        }
+    }
+
+    /// The pane shown last, where the settings open again.
+    static let defaultsKey = "settingsPane"
+}
 
 @MainActor
 final class SettingsWindow: NSObject, NSWindowDelegate {
@@ -20,19 +51,30 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         self.hotkey = hotkey
     }
 
-    func show() {
+    /// Opens the settings at a pane, or at the one shown last.
+    func show(_ pane: SettingsPane? = nil) {
+        if let pane { UserDefaults.standard.set(pane.rawValue, forKey: SettingsPane.defaultsKey) }
         if window == nil {
-            let view = SettingsView(engine: engine, setup: setup, hotkey: hotkey) { [weak self] in
-                self?.window?.close()
-                self?.openWelcome()
-            }
-            let window = NSWindow(contentViewController: NSHostingController(rootView: view))
-            window.title = "Sift It"
-            window.styleMask = [.titled, .closable]
+            let view = SettingsView(
+                engine: engine, setup: setup, hotkey: hotkey,
+                showing: { [weak self] pane in self?.window?.title = pane.title },
+                openWelcome: { [weak self] in
+                    self?.window?.close()
+                    self?.openWelcome()
+                })
+            let controller = NSHostingController(rootView: view)
+            // The sidebar's toolbar, with the window's title beside it.
+            controller.sceneBridgingOptions = [.toolbars]
+            // The window is there before its view, which names the first pane.
+            let window = NSWindow(
+                contentRect: .zero, styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered,
+                defer: true)
+            window.toolbarStyle = .unified
             window.isReleasedWhenClosed = false
             window.delegate = self
-            window.center()
             self.window = window
+            window.contentViewController = controller
+            window.center()
         }
         NSApp.activate()
         window?.makeKeyAndOrderFront(nil)
@@ -47,18 +89,33 @@ private struct SettingsView: View {
     let engine: Engine
     let setup: Setup
     let hotkey: Hotkey
+    /// The pane shown changed: its title is the window's.
+    let showing: (SettingsPane) -> Void
     let openWelcome: () -> Void
+    @AppStorage(SettingsPane.defaultsKey) private var pane = SettingsPane.general
 
     var body: some View {
-        TabView {
-            GeneralSettings(engine: engine, hotkey: hotkey)
-                .tabItem { Label("General", systemImage: "gearshape") }
-            FolderSettings(engine: engine, setup: setup)
-                .tabItem { Label("Folders", systemImage: "folder") }
-            IndexSettings(engine: engine, setup: setup, openWelcome: openWelcome)
-                .tabItem { Label("Index", systemImage: "chart.bar.doc.horizontal") }
+        NavigationSplitView {
+            List(SettingsPane.allCases, selection: selection) { pane in
+                Label(pane.title, systemImage: pane.symbol)
+            }
+            .navigationSplitViewColumnWidth(180)
+            .toolbar(removing: .sidebarToggle)
+        } detail: {
+            switch pane {
+            case .general: GeneralSettings(engine: engine, hotkey: hotkey)
+            case .folders: FolderSettings(engine: engine, setup: setup)
+            case .index: IndexSettings(engine: engine, setup: setup, openWelcome: openWelcome)
+            case .permissions: PermissionsForm()
+            case .about: AboutPane()
+            }
         }
-        .frame(width: 520, height: 500)
+        .frame(width: 700, height: 560)
+        .onChange(of: pane, initial: true) { showing(pane) }
+    }
+
+    private var selection: Binding<SettingsPane?> {
+        Binding(get: { pane }, set: { if let chosen = $0 { pane = chosen } })
     }
 }
 
@@ -94,7 +151,6 @@ private struct GeneralSettings: View {
             if let problem {
                 Text(problem).foregroundStyle(.secondary)
             }
-            PermissionSettings()
         }
         .formStyle(.grouped)
         .task {
@@ -195,35 +251,6 @@ final class RecorderButton: NSButton {
             hotkey.register(.saved)
         }
         recording = false
-    }
-}
-
-/// What opening a result at its place needs from macOS, and where to allow it.
-private struct PermissionSettings: View {
-    @State private var canType = Permissions.canType
-    private let checks = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-
-    var body: some View {
-        Section("Opening results where they matched") {
-            LabeledContent {
-                if canType {
-                    Label("Allowed", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
-                } else {
-                    Button("Allow…") { Permissions.askToType() }
-                }
-            } label: {
-                Text("PDFs at the page")
-                Text("Sift It types Preview's Go to Page for you (Accessibility).")
-            }
-            LabeledContent {
-                Button("Automation Settings…") { Permissions.openAutomationSettings() }
-            } label: {
-                Text("Audio and video at the moment")
-                Text("macOS asks once whether Sift It may control QuickTime Player, Preview and System Events.")
-            }
-        }
-        // System Settings doesn't say when it changes: look again while the settings are open.
-        .onReceive(checks) { _ in canType = Permissions.canType }
     }
 }
 
@@ -367,6 +394,25 @@ private struct IndexSettings: View {
                         .padding(.vertical, 4)
                 }
             }
+            if let stats = engine.status?.stats {
+                Section {
+                    EmbeddingsByKind(vectors: stats.vectorsByKind, progress: embeddingsProgress)
+                        .padding(.vertical, 4)
+                } header: {
+                    HStack {
+                        Text("Embeddings")
+                        Spacer()
+                        Text(stats.vectors.formatted()).monospacedDigit()
+                    }
+                } footer: {
+                    Text(
+                        "Each square is one percent, in the colour of the kind of file it's from"
+                            + (embeddingsProgress < 1 ? ", and empty while it's still to embed." : ".")
+                    )
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                }
+            }
             Section {
                 if let stats = engine.status?.stats {
                     LabeledContent("Files", value: stats.files.formatted())
@@ -431,9 +477,23 @@ private struct IndexSettings: View {
         .formStyle(.grouped)
         .task {
             if let value = try? await engine.setting("indexing.on_battery", as: String.self) { onBattery = value }
-            await engine.refreshStatus()
             await setup.look()
         }
+        // The counts change as files are indexed: look again while the pane is open.
+        .task {
+            while !Task.isCancelled {
+                await engine.refreshStatus()
+                try? await Task.sleep(for: .seconds(3))
+            }
+        }
+    }
+
+    /// How far Embeddings is: all of it once it's done, or when there's no indexer to say.
+    private var embeddingsProgress: Double {
+        guard let phase = engine.indexer?.phases.first(where: { $0.phase == .embeddings }), !phase.isDone else {
+            return 1
+        }
+        return phase.progress
     }
 
     private func change(_ work: @escaping () async throws -> Void) {

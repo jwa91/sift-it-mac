@@ -28,11 +28,13 @@ Apple silicon. It's a client of sift-it's engine and nothing more, and it ships 
 ```
 Sources/SiftItKit/   the protocol (Protocol.swift), the socket (EngineConnection.swift), where things are
                      (Places.swift), how results are said (Format.swift), how far indexing is, in three phases
-                     (Phases.swift). Foundation only, tested.
+                     (Phases.swift), parts of a whole as cells and shares (Shares.swift). Foundation only, tested.
 Sources/SiftIt/      the app: App, Engine (the connection kept up), SearchController (the panel), SearchPanel,
-                     ResultsList, Preview, Playback, Images, Actions, Hotkey, StatusItem, Settings, Permissions,
-                     Setup (the models, the folders, indexing in the background), Welcome (its first-run window),
-                     PhaseProgress (the three-phase bar, for the welcome window and the settings) and About
+                     ResultsList, Preview, Playback, Images, Actions, Hotkey, StatusItem, Settings (the window with
+                     its sidebar, and the General, Folders and Index panes), EmbeddingsByKind (Index's grid),
+                     Permissions (their live state, and the view Settings and the welcome window share), About (its
+                     pane), Setup (the models, the folders, indexing in the background), Welcome (its first-run
+                     window) and PhaseProgress (the three-phase bar, for the welcome window and the settings)
 Tests/               SiftItKit's tests, with a fake engine on a real socket
 scripts/             bundle.sh (the .app), fetch-engine.sh (the sift-it release in ENGINE_VERSION, checked),
                      codesign.sh (Developer ID, notarizing, stapling), release.sh (the GitHub release and the cask),
@@ -43,8 +45,9 @@ scripts/             bundle.sh (the .app), fetch-engine.sh (the sift-it release 
 
 - `make check` before every commit: `swift format lint --strict`, a build with warnings as errors, `swift test`.
 - `make run` builds the app and opens it. `open "sift-it://search?q=…"` opens the panel with a query, which is how
-  to try a change without pressing keys; `sift-it://settings` opens the settings, `sift-it://welcome` the welcome
-  window. Its Start Indexing changes this Mac's setup (folders, LaunchAgents): don't press it to try it.
+  to try a change without pressing keys; `sift-it://settings` opens the settings (`sift-it://settings/index` at a
+  pane), `sift-it://welcome` the welcome window. Its Start Indexing changes this Mac's setup (folders, LaunchAgents):
+  don't press it to try it.
 - `log stream --level debug --predicate 'subsystem == "dev.sift-it.mac"'` shows each search's time in the engine and
   its round trip. `footprint -p $(pgrep -x SiftIt)` shows memory: about 19 MB after launch.
 - An ad hoc signed build is a new app to macOS's privacy settings each time: Accessibility has to be allowed again

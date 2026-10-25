@@ -34,7 +34,7 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>Sift It opens audio and video in QuickTime Player at the moment that matched, and PDFs in Preview at the page.</string>
+	<string>Sift It opens audio and video in QuickTime Player at the moment that matched, and PDFs in Preview at the page, which it goes to through System Events.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>

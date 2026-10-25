@@ -59,6 +59,16 @@ public enum Format {
         kindNames[kind] ?? kind.rawValue.capitalized
     }
 
+    /// A kind's files together, as a list of kinds names them: "Documents", "Text", "Audio".
+    public static func kindsName(_ kind: Kind) -> String {
+        kindsNames[kind] ?? kind.rawValue.capitalized
+    }
+
+    private static let kindsNames: [Kind: String] = [
+        .plaintext: "Text", .document: "Documents", .structured: "Data", .image: "Pictures",
+        .screenshot: "Screenshots", .audio: "Audio", .video: "Videos", .code: "Code",
+    ]
+
     /// How many files of a kind: "1 document", "900 documents", "12 text files".
     public static func kindCount(_ kind: Kind, _ count: Int) -> String {
         let (one, many) = kindCounts[kind] ?? (kind.rawValue, kind.rawValue + "s")

@@ -54,6 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = StatusItem(engine: engine)
         statusItem.openSearch = { [weak self] in self?.search.show() }
         statusItem.openSettings = { [weak self] in self?.settings.show() }
+        statusItem.openAbout = { [weak self] in self?.settings.show(.about) }
         statusItem.startIndexing = { [weak self] in Task { try? await self?.setup.indexInBackground(true) } }
         search.openSettings = { [weak self] in self?.settings.show() }
         engine.watch()
@@ -70,8 +71,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// `sift-it://search?q=…` opens the search with that query, `sift-it://settings` the settings, and
-    /// `sift-it://welcome` the welcome window.
+    /// `sift-it://search?q=…` opens the search with that query, `sift-it://settings` the settings (at a pane with
+    /// `sift-it://settings/index`), and `sift-it://welcome` the welcome window.
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls where url.scheme == "sift-it" {
             switch url.host() {
@@ -80,7 +81,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     .queryItems?.first { $0.name == "q" }?.value
                 search.show(query: query ?? "")
             case "settings":
-                settings.show()
+                settings.show(url.pathComponents.dropFirst().first.flatMap(SettingsPane.init(rawValue:)))
             case "welcome":
                 welcome.show()
             default:

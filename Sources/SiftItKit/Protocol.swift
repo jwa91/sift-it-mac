@@ -24,6 +24,9 @@ public struct Kind: RawRepresentable, Codable, Hashable, Sendable {
     public var isPicture: Bool { self == .image || self == .screenshot }
     /// A recording or a video: it plays from a moment.
     public var plays: Bool { self == .audio || self == .video }
+
+    /// Every kind, in the order the app lists them.
+    public static let all: [Kind] = [.document, .plaintext, .image, .screenshot, .audio, .video, .code, .structured]
 }
 
 /// The part of a file that matched best.
@@ -317,13 +320,17 @@ public struct Stats: Decodable, Sendable, Equatable {
     public let pending: Int
     public let failed: Int
     public let vectors: Int
+    /// The files of each kind.
     public let byKind: [String: Int]
+    /// The embeddings of each kind's files: the vectors, by the kind of file they're from.
+    public let vectorsByKind: [String: Int]
     /// The index's size on disk.
     public let bytes: UInt64
 
     enum CodingKeys: String, CodingKey {
         case files, done, pending, failed, vectors, bytes
         case byKind = "by_kind"
+        case vectorsByKind = "vectors_by_kind"
     }
 }
 
