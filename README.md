@@ -1,51 +1,51 @@
 # Sift It
 
-**Sift It: the blazingly fast document searcher for your Mac, built in Rust.**
+**A fast local search engine for the Mac.**
 
-One search bar for everything on your Mac. Press a shortcut in any app, describe what you're looking for or type
-the words, and the results come as you type: the page of a PDF, the photo, the minute of a podcast, the frame of a
-video where it happens. Recordings and videos play right there, from the moment that matched. Everything runs on
-your Mac, with Google DeepMind's EmbeddingGemma 2.
+One search bar for everything on your Mac. Press a shortcut in any app, describe what you're looking for or type the
+words, and the results come as you type: the page of a PDF, the photo, the minute of a podcast, the moment in a video.
+Recordings and videos play right there, from the moment that matched. Everything runs on your Mac, and nothing you
+index or search leaves it.
 
-This app is a thin native front end, in Swift and AppKit. The work happens in
-[sift-it](https://github.com/jwa91/sift-it), the Rust engine and background indexer, which the app ships with.
+The app is a native front end, in Swift and AppKit. The search engine and the background indexer are
+[sift-it](https://github.com/jwa91/sift-it), written in Rust, which the app ships with.
 
 ## Install
-
-Apple silicon, macOS 14 or later:
 
 ```sh
 brew install jwa91/tap/sift-it
 ```
 
-Open Sift It from Applications. A welcome window downloads its models (1.5 GB, once), asks which folders to search,
-and starts indexing them in the background. After that it lives in the menu bar, and **⌃⇧Space** opens the search
-from any app.
+Apple silicon, macOS 14 or later.
 
-The same install puts the `sift-it` command on your path, for the terminal and the Raycast extension.
+Open Sift It from Applications. A welcome window downloads its two models (1.5 GB, once), asks which folders to
+search, and starts indexing them in the background. After that it lives in the menu bar, and **⌃⇧Space** opens the
+search from any app. Its settings are in the menu bar, and in the search: the gear, or ⌘,. If the menu bar is too
+full to show the icon, open Sift It again.
 
-`brew uninstall --zap sift-it` removes the app, the index and its settings. It leaves the models (1.5 GB) in the
-Hugging Face cache, `~/.cache/huggingface/hub`, which other apps may share; delete them there when nothing else uses
-them.
+The same install puts the `sift-it` command on your path, for the terminal and other front ends.
 
-## While it indexes
+`brew uninstall --zap sift-it` removes the app, the index and its settings. It leaves the models in the Hugging Face
+cache, `~/.cache/huggingface/hub`, which other apps may share; delete them there when nothing else uses them.
 
-A big folder, or a whole drive, can take hours to index, and searching is useful long before that. Indexing goes in
-rounds, and each one makes more of your files findable:
+## Three phases
 
-1. every file by its name and words, within seconds;
-2. documents by meaning;
-3. text in screenshots and scans;
-4. photos by what's in them;
-5. what sounds and video scenes contain;
-6. what's said in recordings.
+Indexing comes in three phases, and you can search all along:
 
-The menu bar says what can be found already and how long the next milestone takes ("Searchable by words · documents
-by meaning 60% · about 12 min"), and what the rest waits for: a charger, memory, a model. While rounds are left, a
-line under the search results says what can't be found yet ("Recordings: 40% written down"), so a missing result
-isn't taken for a bad one. The welcome window shows what each milestone will take for each folder before it starts,
-and for a huge folder offers to leave the slow ones out. Settings → Index shows the milestones, and what indexing does
-on battery.
+| Phase | Finds |
+|---|---|
+| **Exact** | files by their name and exact words, text in screenshots and scans included |
+| **Embeddings** | documents, photos, sounds and video scenes by what they mean |
+| **Transcribed** | what's said in recordings and videos |
+
+Exact needs no model, so every file is found by its words within seconds of adding a folder. Embeddings uses
+EmbeddingGemma 2, by Google DeepMind, and Transcribed uses Parakeet Ultra. Text in screenshots and scans is read by
+macOS itself.
+
+One bar fills once for each phase, with the phase at work and its time left. The menu bar says it in a line ("Exact ✓
+· Embeddings 60% · about 12 min"), and what the rest waits for, if anything: a charger, memory, a model. While phases
+are left, a quiet line under the search results names them ("Embeddings 60% · Transcribed waiting"), so a missing
+result isn't taken for a bad one. New and changed files go through every phase first, so they're found in seconds.
 
 ## Searching
 
@@ -57,21 +57,33 @@ on battery.
 | ⌘↩ | Show in Finder |
 | ⌘Y | Quick Look |
 | ⌘C, ⇧⌘C | Copy the file, copy its path |
+| ⌘, | Settings |
 | ⎋ | Close |
 
-Every keystroke is answered by words at once. When typing pauses, the same query is asked by meaning, and those
-results replace the others. The strong matches come first, in the engine's order, and the weaker ones follow under a
-heading.
+Every keystroke is answered by its words at once. When typing pauses, the same query is asked by meaning, and those
+results replace the others. Strong matches come first, and the weaker ones follow under a heading.
 
 The preview fits the result: a picture, the PDF page that matched, a video at its moment, a recording's waveform
 around the moment, and the passage, page or transcript with your words in bold.
 
 `sift-it://search?q=…` opens the search with a query, and `sift-it://settings` opens the settings.
 
+## Settings
+
+- **General:** the shortcut, opening at login, and searching with embeddings (off, searches are Exact only). It also
+  shows whether results may open at their page and moment (below).
+- **Folders:** the folders to search, each indexed up to a phase (Exact, Embeddings or Transcribed), and the folders
+  inside them to skip.
+- **Index:** the three phases, the files indexed and the space they take, keeping the index up to date in the
+  background, what happens on battery (Exact only, Everything, or Pause), and the models.
+
+On battery, Exact only is the default: every file stays findable by its exact words, new files still go through every
+phase, and the rest waits for a charger.
+
 ## Permissions
 
-macOS asks before your Documents, Desktop and Downloads are read, twice: for Sift It, which shows previews (the
-welcome window asks when it counts those folders), and for sift-it, its indexer, when indexing starts.
+macOS asks once for each folder that needs it, such as Documents, Desktop or Downloads, as Sift It, right after you
+add the folder. The indexer is part of the app, so it reads the folder without asking again.
 
 Opening a result at its place goes through `sift-it open`. That command drives other apps, and macOS counts it as
 Sift It's doing:
@@ -80,7 +92,7 @@ Sift It's doing:
   time.
 - **PDFs at the page.** Preview has no way to be told a page, so Sift It types Go to Page for it (Accessibility).
   macOS doesn't ask for this by itself. The first time it's needed, Sift It explains why and takes you to System
-  Settings. Settings → General shows whether it's allowed.
+  Settings.
 
 The shortcut needs no permission. It's a system hot key, which costs nothing until you press it.
 
@@ -125,8 +137,8 @@ make snapshot  # what a release makes, in dist/, unpublished
 `ENGINE_VERSION`; `scripts/fetch-engine.sh` fetches it and checks it. What the releasing Mac needs is in the header of
 `scripts/codesign.sh`.
 
-`SiftItKit` holds the protocol and the socket and is tested on its own (`swift test`), against a fake engine on a
-real socket. `SiftIt` is the app.
+`SiftItKit` holds the protocol, the socket, and the three phases (`Phases.swift`, where the engine's rounds map onto
+them), and is tested on its own (`swift test`), against a fake engine on a real socket. `SiftIt` is the app.
 
 How long searches take:
 
@@ -139,13 +151,14 @@ log stream --level debug --predicate 'subsystem == "dev.sift-it.mac"'
 About Sift It, in its menu, lists the parts it's made with:
 
 - [sift-it](https://github.com/jwa91/sift-it), its engine, under the MIT License;
-- [llama.cpp](https://github.com/ggml-org/llama.cpp), which runs the model in it, under the MIT License;
-- [FluidAudio](https://github.com/FluidInference/FluidAudio), by FluidInference, compiled into `sift-it-transcribe`,
-  under the Apache License 2.0;
+- [llama.cpp](https://github.com/ggml-org/llama.cpp), which runs the embedding model in it, under the MIT License;
+- [FluidAudio](https://github.com/FluidInference/FluidAudio), by FluidInference, which runs the speech model on the
+  Neural Engine in `sift-it-transcribe`, under the Apache License 2.0;
 - [EmbeddingGemma 2](https://huggingface.co/google/embeddinggemma-2), by Google DeepMind, under the Apache License
   2.0;
 - [Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra), by Moondream (from NVIDIA's Parakeet TDT 0.6B v3),
   in [FluidInference's Core ML conversion](https://huggingface.co/FluidInference/parakeet-ultra-coreml), under CC BY
   4.0.
 
-Sift It uses the [MIT License](LICENSE). Gemma is a trademark of Google LLC.
+The engine's THIRD_PARTY_NOTICES ships inside the app. Sift It uses the [MIT License](LICENSE). Gemma is a trademark
+of Google LLC.
