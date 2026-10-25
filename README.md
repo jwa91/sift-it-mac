@@ -4,7 +4,7 @@
 
 One search bar for everything on your Mac. Press a shortcut in any app, describe what you're looking for or type the
 words, and the results come as you type: the page of a PDF, the photo, the minute of a podcast, the moment in a video.
-Recordings and videos play right there, from the moment that matched. Everything runs on your Mac, and nothing you
+Audio and video play right there, from the moment that matched. Everything runs on your Mac, and nothing you
 index or search leaves it.
 
 The app is a native front end, in Swift and AppKit. The search engine and the background indexer are
@@ -36,7 +36,7 @@ Indexing comes in three phases, and you can search all along:
 |---|---|
 | **Exact** | files by their name and exact words, text in screenshots and scans included |
 | **Embeddings** | documents, photos, sounds and video scenes by what they mean |
-| **Transcribed** | what's said in recordings and videos |
+| **Transcribed** | what's said in audio and video |
 
 Exact needs no model, so every file is found by its words within seconds of adding a folder. Embeddings uses
 EmbeddingGemma 2, by Google DeepMind, and Transcribed uses Parakeet Ultra. Text in screenshots and scans is read by
@@ -52,8 +52,8 @@ result isn't taken for a bad one. New and changed files go through every phase f
 | Key | |
 |---|---|
 | ↑ ↓ | Move through the results |
-| ↩ | Open where it matched: a recording or video at its moment, a PDF at its page, code at its line |
-| ⇥ | Play or pause a recording or video in the preview (Space too, once you've moved with ↑ ↓) |
+| ↩ | Open where it matched: audio or video at its moment, a PDF at its page, code at its line |
+| ⇥ | Play or pause audio or video in the preview (Space too, once you've moved with ↑ ↓) |
 | ⌘↩ | Show in Finder |
 | ⌘Y | Quick Look |
 | ⌘C, ⇧⌘C | Copy the file, copy its path |
@@ -63,7 +63,7 @@ result isn't taken for a bad one. New and changed files go through every phase f
 Every keystroke is answered by its words at once. When typing pauses, the same query is asked by meaning, and those
 results replace the others. Strong matches come first, and the weaker ones follow under a heading.
 
-The preview fits the result: a picture, the PDF page that matched, a video at its moment, a recording's waveform
+The preview fits the result: a picture, the PDF page that matched, a video at its moment, an audio file's waveform
 around the moment, and the passage, page or transcript with your words in bold.
 
 `sift-it://search?q=…` opens the search with a query, and `sift-it://settings` opens the settings.
@@ -88,7 +88,7 @@ add the folder. The indexer is part of the app, so it reads the folder without a
 Opening a result at its place goes through `sift-it open`. That command drives other apps, and macOS counts it as
 Sift It's doing:
 
-- **Recordings and videos at the moment.** Sift It controls QuickTime Player (Automation). macOS asks the first
+- **Audio and video at the moment.** Sift It controls QuickTime Player (Automation). macOS asks the first
   time.
 - **PDFs at the page.** Preview has no way to be told a page, so Sift It types Go to Page for it (Accessibility).
   macOS doesn't ask for this by itself. The first time it's needed, Sift It explains why and takes you to System
