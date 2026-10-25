@@ -185,6 +185,14 @@ final class Setup {
 
     // MARK: - Folders
 
+    /// The agents' session logs, offered with a click where they're there: the open panel hides them. Whether a folder
+    /// is there is all that's looked at before it's chosen.
+    static let conversationFolders = [
+        ("Claude Code conversations", "~/.claude/projects"), ("Codex conversations", "~/.codex/sessions"),
+    ]
+    .map { (name: $0.0, path: ($0.1 as NSString).expandingTildeInPath) }
+    .filter { FileManager.default.fileExists(atPath: $0.path) }
+
     /// Counts what indexing a folder takes. Reading it is when macOS asks whether Sift It may, for the folders it
     /// protects: right after the folder was chosen.
     func estimate(_ folder: String) async {

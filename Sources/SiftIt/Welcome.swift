@@ -203,6 +203,18 @@ private struct WelcomeView: View {
                     Spacer()
                     Button("Add Folder…", action: addFolder)
                 }
+                let conversations = Setup.conversationFolders.filter { !chosen.contains($0.path) }
+                if !conversations.isEmpty {
+                    HStack(spacing: 8) {
+                        ForEach(conversations, id: \.path) { folder in
+                            Button {
+                                add([folder.path])
+                            } label: {
+                                Label(folder.name, systemImage: "plus")
+                            }
+                        }
+                    }
+                }
                 Label("macOS asks once whether Sift It may read each folder you add.", systemImage: "hand.raised")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -438,7 +450,7 @@ private struct FolderRow: View {
             Image(nsImage: NSWorkspace.shared.icon(forFile: folder))
                 .resizable()
                 .frame(width: 22, height: 22)
-            Text(FileManager.default.displayName(atPath: folder))
+            Text(name)
             Spacer()
             if !indexed, counting, estimate == nil {
                 ProgressView().controlSize(.mini)
@@ -451,9 +463,14 @@ private struct FolderRow: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.borderless)
-            .accessibilityLabel("Remove \(FileManager.default.displayName(atPath: folder))")
+            .accessibilityLabel("Remove \(name)")
         }
         .padding(.vertical, 8)
+    }
+
+    /// The folder's name, or what an agent's session logs are called.
+    private var name: String {
+        Setup.conversationFolders.first { $0.path == folder }?.name ?? FileManager.default.displayName(atPath: folder)
     }
 
     private var summary: String {

@@ -283,13 +283,6 @@ private struct FolderSettings: View {
         (.conversation, "Claude Code and Codex"),
     ]
 
-    /// Folders offered with a click when they're there: agents' session logs, which the open panel hides.
-    private static let suggested = [
-        ("Claude Code conversations", "~/.claude/projects"), ("Codex conversations", "~/.codex/sessions"),
-    ]
-    .map { (name: $0.0, path: ($0.1 as NSString).expandingTildeInPath) }
-    .filter { FileManager.default.fileExists(atPath: $0.path) }
-
     var body: some View {
         Form {
             Section {
@@ -315,7 +308,7 @@ private struct FolderSettings: View {
                         .disabled(selected == nil)
                 }
                 if let folders {
-                    let offered = Self.suggested.filter { !folders.folders.contains($0.path) }
+                    let offered = Setup.conversationFolders.filter { !folders.folders.contains($0.path) }
                     if !offered.isEmpty {
                         HStack {
                             ForEach(offered, id: \.path) { folder in
