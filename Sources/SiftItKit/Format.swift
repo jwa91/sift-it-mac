@@ -59,6 +59,19 @@ public enum Format {
         kindNames[kind] ?? kind.rawValue.capitalized
     }
 
+    /// How many files of a kind: "1 document", "900 documents", "12 text files".
+    public static func kindCount(_ kind: Kind, _ count: Int) -> String {
+        let (one, many) = kindCounts[kind] ?? (kind.rawValue, kind.rawValue + "s")
+        return "\(count.formatted()) \(count == 1 ? one : many)"
+    }
+
+    private static let kindCounts: [Kind: (String, String)] = [
+        .plaintext: ("text file", "text files"), .document: ("document", "documents"),
+        .structured: ("data file", "data files"), .image: ("picture", "pictures"),
+        .screenshot: ("screenshot", "screenshots"), .audio: ("recording", "recordings"),
+        .video: ("video", "videos"), .code: ("code file", "code files"),
+    ]
+
     /// A path with the home folder as ~.
     public static func shortPath(_ path: String, home: String = NSHomeDirectory()) -> String {
         path == home || path.hasPrefix(home + "/") ? "~" + path.dropFirst(home.count) : path

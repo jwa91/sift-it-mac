@@ -454,7 +454,7 @@ private struct IndexSettings: View {
 
     private func kinds(_ stats: Stats) -> String {
         stats.byKind.sorted { $0.value > $1.value }
-            .map { "\($0.value) \(Format.kindName(Kind(rawValue: $0.key)).lowercased())" }
+            .map { Format.kindCount(Kind(rawValue: $0.key), $0.value) }
             .joined(separator: ", ")
     }
 }
