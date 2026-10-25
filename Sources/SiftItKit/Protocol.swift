@@ -19,6 +19,8 @@ public struct Kind: RawRepresentable, Codable, Hashable, Sendable {
     public static let audio = Kind(rawValue: "audio")
     public static let video = Kind(rawValue: "video")
     public static let code = Kind(rawValue: "code")
+    /// A Claude Code or Codex session log, read as what was asked and answered.
+    public static let conversation = Kind(rawValue: "conversation")
 
     /// A picture of some sort: shown as itself.
     public var isPicture: Bool { self == .image || self == .screenshot }
@@ -26,7 +28,9 @@ public struct Kind: RawRepresentable, Codable, Hashable, Sendable {
     public var plays: Bool { self == .audio || self == .video }
 
     /// Every kind, in the order the app lists them.
-    public static let all: [Kind] = [.document, .plaintext, .image, .screenshot, .audio, .video, .code, .structured]
+    public static let all: [Kind] = [
+        .document, .plaintext, .image, .screenshot, .audio, .video, .code, .structured, .conversation,
+    ]
 }
 
 /// The part of a file that matched best.
@@ -48,6 +52,8 @@ public struct Segment: RawRepresentable, Codable, Hashable, Sendable {
     public static let frame = Segment(rawValue: "frame")
     /// What's said in a recording or video, written down.
     public static let speech = Segment(rawValue: "speech")
+    /// A prompt and what the agent answered, in a conversation, with when it was said.
+    public static let exchange = Segment(rawValue: "exchange")
 }
 
 /// Where search by meaning is: it loads on the first search that needs it.
@@ -278,13 +284,19 @@ public struct Info: Decodable, Sendable, Equatable {
     /// In pixels, for pictures and videos.
     public var width: Int?
     public var height: Int?
-    /// A recording's tags: title, artist, album.
+    /// A recording's tags: title, artist, album; a conversation's title.
     public var tags: [String: String] = [:]
+    /// A conversation's agent (`claude` or `codex`), its session, the folder it started in, and the command that
+    /// resumes it there, as words.
+    public var agent: String?
+    public var session: String?
+    public var cwd: String?
+    public var resume: [String]?
 
     public init() {}
 
     enum CodingKeys: String, CodingKey {
-        case duration, pages, width, height, tags
+        case duration, pages, width, height, tags, agent, session, cwd, resume
     }
 
     public init(from decoder: any Decoder) throws {
@@ -294,6 +306,10 @@ public struct Info: Decodable, Sendable, Equatable {
         width = try? c.decodeIfPresent(Int.self, forKey: .width)
         height = try? c.decodeIfPresent(Int.self, forKey: .height)
         tags = (try? c.decodeIfPresent([String: String].self, forKey: .tags)) ?? [:]
+        agent = try? c.decodeIfPresent(String.self, forKey: .agent)
+        session = try? c.decodeIfPresent(String.self, forKey: .session)
+        cwd = try? c.decodeIfPresent(String.self, forKey: .cwd)
+        resume = try? c.decodeIfPresent([String].self, forKey: .resume)
     }
 }
 

@@ -15,10 +15,13 @@ public enum Format {
             : String(format: "%d:%02d", minutes, rest)
     }
 
-    /// Where in the file the match is: "Page 3", "1:24", "Line 12", "Cell 2". nil where the place says nothing.
+    /// Where in the file the match is: "Page 3", "1:24", "Line 12", "Cell 2", and in a conversation when it was said,
+    /// "2 Jun at 14:00". nil where the place says nothing.
     public static func location(of hit: Hit) -> String? {
         guard let loc = hit.loc else { return nil }
         switch hit.segment {
+        case .exchange:
+            return when(loc)
         case .page:
             return "Page \(Int(loc))"
         case .sound, .frame, .speech:
@@ -34,8 +37,9 @@ public enum Format {
         }
     }
 
-    /// The same, short, for the list: "p. 3", "1:24", "line 12".
+    /// The same, short, for the list: "p. 3", "1:24", "line 12", and a conversation's day, "2 Jun".
     public static func shortLocation(of hit: Hit) -> String? {
+        if hit.segment == .exchange, let loc = hit.loc { return when(loc, time: false) }
         guard let label = location(of: hit) else { return nil }
         if label.hasPrefix("Page ") { return "p. " + label.dropFirst(5) }
         if label.hasPrefix("Line ") { return "line " + label.dropFirst(5) }
@@ -50,9 +54,43 @@ public enum Format {
         return "\(timestamp(start))–\(timestamp(end))"
     }
 
+    /// When something was said, to the minute, "2 Jun at 14:00", or the day, "2 Jun", as the locale writes them.
+    public static func when(
+        _ seconds: Double, time: Bool = true, locale: Locale = .current, timeZone: TimeZone = .current
+    ) -> String {
+        var style = Date.FormatStyle(locale: locale, timeZone: timeZone).day().month(.abbreviated)
+        if time { style = style.hour().minute() }
+        style.calendar = Calendar(identifier: .gregorian)
+        return Date(timeIntervalSince1970: seconds).formatted(style)
+    }
+
+    /// A conversation's agent, by its name: "Claude Code", "Codex".
+    public static func agent(of info: Info) -> String? {
+        switch info.agent {
+        case "claude": "Claude Code"
+        case "codex": "Codex"
+        default: info.agent
+        }
+    }
+
+    /// The command that resumes a conversation in the folder it started in, for a shell:
+    /// `cd '/Users/me/bakery' && codex resume 019a…`. nil for anything but a conversation that says how.
+    public static func resumeCommand(of info: Info) -> String? {
+        guard let cwd = info.cwd, let words = info.resume, !words.isEmpty else { return nil }
+        return "cd \(shellQuoted(cwd)) && " + words.map(shellQuoted).joined(separator: " ")
+    }
+
+    /// A word as a shell reads it back the same: as it is when it's safe, else in single quotes.
+    static func shellQuoted(_ word: String) -> String {
+        let safe = CharacterSet(
+            charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@%+=:,./_-")
+        if !word.isEmpty, word.unicodeScalars.allSatisfy(safe.contains) { return word }
+        return "'" + word.replacingOccurrences(of: "'", with: #"'\''"#) + "'"
+    }
+
     public static let kindNames: [Kind: String] = [
         .plaintext: "Text", .document: "Document", .structured: "Data", .image: "Picture",
-        .screenshot: "Screenshot", .audio: "Audio", .video: "Video", .code: "Code",
+        .screenshot: "Screenshot", .audio: "Audio", .video: "Video", .code: "Code", .conversation: "Conversation",
     ]
 
     public static func kindName(_ kind: Kind) -> String {
@@ -66,7 +104,7 @@ public enum Format {
 
     private static let kindsNames: [Kind: String] = [
         .plaintext: "Text", .document: "Documents", .structured: "Data", .image: "Pictures",
-        .screenshot: "Screenshots", .audio: "Audio", .video: "Videos", .code: "Code",
+        .screenshot: "Screenshots", .audio: "Audio", .video: "Videos", .code: "Code", .conversation: "Conversations",
     ]
 
     /// How many files of a kind: "1 document", "900 documents", "12 text files".
@@ -80,6 +118,7 @@ public enum Format {
         .structured: ("data file", "data files"), .image: ("picture", "pictures"),
         .screenshot: ("screenshot", "screenshots"), .audio: ("audio file", "audio files"),
         .video: ("video", "videos"), .code: ("code file", "code files"),
+        .conversation: ("conversation", "conversations"),
     ]
 
     /// What leaves the index with a kind of file, asked before it's left out: "85 audio files leave the index,

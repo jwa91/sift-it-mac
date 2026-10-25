@@ -241,7 +241,8 @@ private final class ResultCell: NSTableCellView {
     func show(_ hit: Hit) {
         path = hit.path
         title.stringValue = hit.name
-        subtitle.stringValue = Format.folder(of: hit.path)
+        // A conversation's folder is the one it ran in, not its log's.
+        subtitle.stringValue = hit.info.cwd.map { Format.shortPath($0) } ?? Format.folder(of: hit.path)
         place.stringValue = Format.shortLocation(of: hit) ?? ""
         guard Images.hasThumbnail(hit) else {
             icon.show(Images.shared.icon(for: hit), fill: false)

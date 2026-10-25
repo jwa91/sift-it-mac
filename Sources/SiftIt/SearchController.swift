@@ -308,7 +308,8 @@ final class SearchController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         case ("c", false):
             // Copying text in the field stays copying text.
             if let editor = field.currentEditor(), editor.selectedRange.length > 0 { return false }
-            hit.map(Actions.copyFile)
+            // A conversation's log is no use elsewhere: its command is.
+            if let hit, hit.kind == .conversation { Actions.copyResumeCommand(hit) } else { hit.map(Actions.copyFile) }
         case ("c", true): hit.map(Actions.copyPath)
         case (",", false): showSettings()
         case ("w", false): hide()

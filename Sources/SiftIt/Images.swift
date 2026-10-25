@@ -29,13 +29,42 @@ final class Images {
         hit.kind.isPicture || hit.kind == .video
     }
 
-    /// The icon for the file's type: the same for every file of a type, so it's made once.
+    /// The icon for the file's type: the same for every file of a type, so it's made once. A conversation's is its own:
+    /// its log's type says nothing.
     func icon(for hit: Hit) -> NSImage {
+        if hit.kind == .conversation {
+            if let icon = icons["conversation"] { return icon }
+            let icon = Self.conversationIcon()
+            icons["conversation"] = icon
+            return icon
+        }
         let type = (hit.path as NSString).pathExtension.lowercased()
         if let icon = icons[type] { return icon }
         let icon = NSWorkspace.shared.icon(for: UTType(filenameExtension: type) ?? .data)
         icons[type] = icon
         return icon
+    }
+
+    /// Two speech bubbles, white on an indigo tile: it shows on a selected row too.
+    private static func conversationIcon() -> NSImage {
+        NSImage(size: NSSize(width: 30, height: 30), flipped: false) { rect in
+            let tile = rect.insetBy(dx: 2, dy: 2)
+            NSColor.systemIndigo.setFill()
+            NSBezierPath(roundedRect: tile, xRadius: 6, yRadius: 6).fill()
+            let configuration = NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
+                .applying(.init(paletteColors: [.white]))
+            if let symbol = NSImage(
+                systemSymbolName: "bubble.left.and.bubble.right.fill", accessibilityDescription: nil)?
+                .withSymbolConfiguration(configuration)
+            {
+                let size = symbol.size
+                symbol.draw(
+                    in: NSRect(
+                        x: rect.midX - size.width / 2, y: rect.midY - size.height / 2, width: size.width,
+                        height: size.height))
+            }
+            return true
+        }
     }
 
     func cachedThumbnail(for hit: Hit) -> NSImage? {

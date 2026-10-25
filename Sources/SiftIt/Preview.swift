@@ -73,7 +73,10 @@ final class PreviewView: NSView {
         why.stringValue = Self.why(hit) ?? ""
         why.isHidden = why.stringValue.isEmpty
         let play = hit.kind.plays && hit.loc != nil ? "    ⇥ Play" : ""
-        footer.stringValue = "↩ \(Actions.openTitle(hit))\(play)    ⌘↩ Show in Finder    ⌘Y Quick Look"
+        footer.stringValue =
+            hit.kind == .conversation
+            ? "↩ \(Actions.openTitle(hit))    ⌘C Copy Resume Command    ⌘↩ Show in Finder"
+            : "↩ \(Actions.openTitle(hit))\(play)    ⌘↩ Show in Finder    ⌘Y Quick Look"
         showMedia(hit)
         showText(hit)
     }
@@ -184,7 +187,7 @@ final class PreviewView: NSView {
         let id = shown
         passage = hit.excerpt.map { ($0, nil) }
         render()
-        let hasText = [Segment.passage, .page, .ocr, .speech].contains(hit.segment)
+        let hasText = [Segment.passage, .page, .ocr, .speech, .exchange].contains(hit.segment)
         scroll.isHidden = !hasText && passage == nil
         guard hasText, let engine else { return }
         Task {
@@ -230,6 +233,13 @@ final class PreviewView: NSView {
 
         var first: NSRange?
         let plain = body.string as NSString
+        // A conversation says who's speaking where it changes: "User:", "Claude:", "Codex:".
+        if hit.kind == .conversation {
+            let speakers = /(?m)^(User|Claude|Codex):/
+            for match in body.string.matches(of: speakers) {
+                body.addAttribute(.font, value: bold, range: NSRange(match.range, in: body.string))
+            }
+        }
         // Words of one or two letters ("a", "op", "in") would be bold all over: they're left plain.
         for word in Format.words(of: query) where word.count > 2 || word.allSatisfy(\.isNumber) {
             var searched = NSRange(location: 0, length: plain.length)
@@ -252,10 +262,15 @@ final class PreviewView: NSView {
 
     // MARK: - Words about the result
 
-    /// "Video · 3:50 · 640×360 · 3.9 MB · 12 Oct 2026"
+    /// "Video · 3:50 · 640×360 · 3.9 MB · 12 Oct 2026", "Conversation · Codex · ~/projects/bakery · 2 Jun 2026"
     static func meta(of hit: Hit) -> String {
         let info = hit.info
         var parts = [Format.kindName(hit.kind)]
+        if hit.kind == .conversation {
+            parts += [Format.agent(of: info), info.cwd.map { Format.shortPath($0) }].compactMap { $0 }
+            parts.append(Date(timeIntervalSince1970: hit.modified).formatted(date: .abbreviated, time: .omitted))
+            return parts.joined(separator: " · ")
+        }
         if let duration = info.duration { parts.append(Format.timestamp(duration)) }
         if let pages = info.pages { parts.append(pages == 1 ? "1 page" : "\(pages) pages") }
         if hit.kind != .audio, let width = info.width, let height = info.height { parts.append("\(width)×\(height)") }

@@ -102,12 +102,14 @@ private struct Swatch: View {
         }
     }
 
-    /// The eight kinds' colours, in Kind.all's order, each with a step for light and one for dark: a categorical
+    /// The kinds' colours, in Kind.all's order, each with a step for light and one for dark: a categorical
     /// palette whose neighbours stay apart for colour-blind eyes too.
     private static let colours: [Kind: (light: UInt32, dark: UInt32)] = [
         .document: (0x2a78d6, 0x3987e5), .plaintext: (0xeb6834, 0xd95926), .image: (0x1baf7a, 0x199e70),
         .screenshot: (0xeda100, 0xc98500), .audio: (0xe87ba4, 0xd55181), .video: (0x008300, 0x008300),
         .code: (0x6250d6, 0x9085e9), .structured: (0xe34948, 0xe66767),
+        // A ninth kind takes the neutral grey a ninth series gets: eight hues are all that stay apart.
+        .conversation: (0x7d7d78, 0x9a9a95),
     ]
 
     static func colour(of kind: Kind) -> Color {

@@ -35,6 +35,40 @@ let videoHit = """
     #expect(hit.info.tags["title"] == "A")
 }
 
+/// A conversation's hit as the engine sends it (sift-it with conversations, its tests' Codex log).
+let conversationHit = """
+    {"path":"/Users/me/.codex/sessions/2026/06/02/rollout.jsonl","name":"How long should sourdough proof?",
+     "kind":"conversation","segment":"exchange","segment_id":1,"loc":1780408801.0,"loc_end":1780408809.0,
+     "score":0.4,"meaning":true,"words":true,"strong":true,"excerpt":"User: How long should sourdough proof?",
+     "modified":1780408809.0,"size":3400,"info":{"agent":"codex","cwd":"/Users/someone/projects/bakery",
+     "resume":["codex","resume","019a3f2e-7c41-7d20-b8e5-5f0c9d1a2b3c"],
+     "session":"019a3f2e-7c41-7d20-b8e5-5f0c9d1a2b3c","tags":{"title":"How long should sourdough proof?"}}}
+    """
+
+@Test func aConversationIsSaidByWhenAndWhereItRan() throws {
+    let hit = try JSONDecoder().decode(Hit.self, from: Data(conversationHit.utf8))
+    #expect(hit.kind == .conversation)
+    #expect(hit.segment == .exchange)
+    #expect(hit.name == "How long should sourdough proof?")
+    #expect(hit.info.session == "019a3f2e-7c41-7d20-b8e5-5f0c9d1a2b3c")
+    #expect(Format.agent(of: hit.info) == "Codex")
+    #expect(Format.kindName(hit.kind) == "Conversation")
+    // When it was said, to the minute, not a line.
+    let utc = TimeZone(identifier: "UTC")!
+    #expect(Format.when(1_780_408_801, locale: Locale(identifier: "en_GB"), timeZone: utc) == "2 Jun at 14:00")
+    #expect(Format.location(of: hit) == Format.when(1_780_408_801))
+    #expect(Format.when(1_780_408_801, time: false, locale: Locale(identifier: "en_GB"), timeZone: utc) == "2 Jun")
+    #expect(Format.shortLocation(of: hit) == Format.when(1_780_408_801, time: false))
+    #expect(
+        Format.resumeCommand(of: hit.info)
+            == "cd /Users/someone/projects/bakery && codex resume 019a3f2e-7c41-7d20-b8e5-5f0c9d1a2b3c")
+    var odd = hit.info
+    odd.cwd = "/Users/me/Ali's projects"
+    odd.resume = ["claude", "--resume", "a b"]
+    #expect(Format.resumeCommand(of: odd) == #"cd '/Users/me/Ali'\''s projects' && claude --resume 'a b'"#)
+    #expect(Format.resumeCommand(of: Info()) == nil)
+}
+
 @Test func requestsWriteTheDocumentedLines() throws {
     let search = Request.search(Search(q: "dog", mode: .words, kinds: [.video], prefixLast: true))
     #expect(
@@ -130,7 +164,7 @@ let indexerLine = """
     #expect(Format.kindCount(.init(rawValue: "audio"), 1) == "1 audio file")
     #expect(
         Kind.all.map(Format.kindsName) == [
-            "Documents", "Text", "Pictures", "Screenshots", "Audio", "Videos", "Code", "Data",
+            "Documents", "Text", "Pictures", "Screenshots", "Audio", "Videos", "Code", "Data", "Conversations",
         ])
     #expect(
         Format.leaving(.audio, indexed: ["audio": 85, "document": 3])
