@@ -80,7 +80,7 @@ final class Setup {
         self.engine = engine
     }
 
-    /// Went through the welcome window once (or sift-it was set up before the app came).
+    /// Went through the welcome window once: what it offers from then on starts from what's there.
     static var isDone: Bool {
         get { UserDefaults.standard.bool(forKey: "setUp") }
         set { UserDefaults.standard.set(newValue, forKey: "setUp") }
@@ -124,16 +124,14 @@ final class Setup {
         var none: Bool { !(text || media || speech) }
     }
 
-    /// Whether the welcome window has something to do: the first time, unless sift-it was set up already (through its
-    /// command line, before the app).
+    /// Whether the welcome window has something to do, from what's there: the preferences can outlive the rest
+    /// (`brew uninstall --zap` while cfprefsd still serves them). Searching needs the models and a folder, and indexing
+    /// in the background has to have been chosen, on or off: a background indexer found running counts as on, and one
+    /// an upgrade took away `restoreBackground` puts back.
     func needsWelcome() async -> Bool {
-        guard !Self.isDone else { return false }
         await look()
-        if models == .ready, !indexed.isEmpty, inBackground {
-            Self.isDone = true
-            return false
-        }
-        return true
+        if inBackground, Self.chosenBackground == nil { Self.chosenBackground = true }
+        return models != .ready || indexed.isEmpty || Self.chosenBackground == nil
     }
 
     /// The indexer's LaunchAgent is loaded.
@@ -243,13 +241,9 @@ final class Setup {
     }
 
     /// Homebrew takes the LaunchAgents away when it upgrades the app (the cask's uninstall step). They come back when
-    /// indexing in the background was chosen here, or, with nothing chosen yet, when sift-it was set up before the app.
+    /// indexing in the background was chosen. After `needsWelcome`, which looked.
     func restoreBackground() async {
-        guard Self.chosenBackground != false, !(await Self.indexerRuns()) else { return }
-        if Self.chosenBackground == nil {
-            await look()
-            guard models == .ready, !indexed.isEmpty else { return }
-        }
+        guard Self.chosenBackground == true, !inBackground else { return }
         try? await indexInBackground(true)
     }
 
