@@ -23,6 +23,9 @@ you've chosen it.
 - **Where things are:** the welcome window says Sift It lives in the menu bar, that its settings are there and in the
   search, and that opening Sift It again opens the search when the icon hides on a full menu bar. The search panel
   has a gear for the settings, beside ⌘,.
+- **The app ships with sift-it 0.4.1** (`ENGINE_VERSION`). On battery, Exact means the same as everywhere else:
+  every file's words and the text in screenshots and scans go on, and Embeddings and Transcribed wait for a charger.
+- Settings → Index counts files in the plural ("900 documents").
 
 ## [0.5.0] — 2026-10-25
 
