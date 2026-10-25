@@ -1,6 +1,6 @@
-// The welcome window: what Sift It is, the model, the folders to search (with what each milestone takes for them), and
-// indexing in the background, then what can be found already. It does what the command line's setup did, so installing
-// the app is all there is to it. Its views exist only while it's open.
+// The welcome window: what Sift It is, its models, the folders to search, indexing in the background and where things
+// are, then how far indexing is, in its three phases. It does what the command line's setup did, so installing the app
+// is all there is to it. No folder is read before it's chosen here. Its views exist only while it's open.
 
 import SiftItKit
 import SwiftUI
@@ -52,26 +52,28 @@ private struct WelcomeView: View {
     let finish: () -> Void
 
     private enum Page: Int, CaseIterable {
-        case hello, model, folders, ready, indexing
+        case hello, models, folders, ready, indexing
     }
 
     @State private var page = Page.hello
-    /// The folders offered: the usual ones in the home folder, those indexed already, and those added here.
-    @State private var offered: [String] = []
-    @State private var chosen: Set<String> = []
-    /// How deep a folder is read, where that was chosen here: a huge one can leave out the slow milestones.
-    @State private var depths: [String: Depth] = [:]
+    /// The folders chosen, in the order they were: those indexed already, and those added here.
+    @State private var chosen: [String] = []
     @State private var inBackground = true
     @State private var atLogin = true
     @State private var starting = false
     @State private var problem: String?
+
+    /// The folders offered with a click: none is read, or even looked into, until it's chosen.
+    private static let suggested: [String] = ["Documents", "Desktop", "Downloads"]
+        .map { FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent($0).path }
+        .filter { FileManager.default.fileExists(atPath: $0) }
 
     var body: some View {
         VStack(spacing: 0) {
             Group {
                 switch page {
                 case .hello: hello
-                case .model: modelPage
+                case .models: modelsPage
                 case .folders: foldersPage
                 case .ready: readyPage
                 case .indexing: indexingPage
@@ -82,7 +84,7 @@ private struct WelcomeView: View {
             .padding(.top, 44)
             footer
         }
-        .frame(width: 620, height: 580)
+        .frame(width: 620, height: 600)
         .task { await begin() }
     }
 
@@ -114,42 +116,52 @@ private struct WelcomeView: View {
         }
     }
 
-    private var modelPage: some View {
+    private var modelsPage: some View {
         PageLayout(
-            symbol: "arrow.down.circle", title: "Download the model",
-            text: """
-                Sift It understands your files with Google DeepMind's EmbeddingGemma 2, running on this Mac. \
-                It's downloaded once: 1.5 GB.
-                """
+            symbol: "arrow.down.circle", title: "Download the models",
+            text: "Sift It runs two models on this Mac. They're downloaded once: \(megabytes(Setup.Model.bytes))."
         ) {
-            VStack(alignment: .leading, spacing: 10) {
-                switch setup.model {
-                case .unknown:
-                    ProgressView().controlSize(.small)
-                case .missing:
-                    Button("Download (1.5 GB)") { setup.downloadModel() }
-                        .controlSize(.large)
-                case .downloading(let done, let total):
-                    ProgressView(value: Double(done), total: Double(max(total, 1)))
-                    Text(total > 0 ? "\(megabytes(done)) of \(megabytes(total))" : "Starting…")
-                        .font(.callout.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                    Text("It goes on downloading while you continue.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                case .ready:
-                    Label("The model is ready", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                        .font(.title3)
-                case .failed(let why):
-                    Label(why, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                    Button("Try Again") { setup.downloadModel() }
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(Setup.Model.allCases, id: \.self) { model in
+                        ModelRow(model: model, ready: setup.has(model))
+                    }
+                    Label {
+                        Text("Text in screenshots and scans is read by macOS itself.")
+                    } icon: {
+                        Image(systemName: "text.viewfinder")
+                    }
+                    .foregroundStyle(.secondary)
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    switch setup.models {
+                    case .unknown:
+                        ProgressView().controlSize(.small)
+                    case .missing:
+                        Button("Download (\(megabytes(Setup.Model.bytes)))") { setup.downloadModels() }
+                            .controlSize(.large)
+                    case .downloading(let done, let total):
+                        ProgressView(value: Double(done), total: Double(max(total, 1)))
+                        Text(total > 0 ? "\(megabytes(done)) of \(megabytes(total))" : "Starting…")
+                            .font(.callout.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                        Text("It goes on downloading while you continue.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    case .ready:
+                        Label("The models are ready", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                            .font(.title3)
+                    case .failed(let why):
+                        Label(why, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Button("Try Again") { setup.downloadModels() }
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .onAppear { if setup.model == .missing { setup.downloadModel() } }
+        .onAppear { if setup.models == .missing { setup.downloadModels() } }
     }
 
     private var foldersPage: some View {
@@ -157,42 +169,51 @@ private struct WelcomeView: View {
             symbol: "folder", title: "Choose what to search",
             text: "Sift It reads each file once, then keeps up as files change. You can change this later in Settings."
         ) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(offered, id: \.self) { folder in
-                        FolderRow(
-                            folder: folder, indexed: setup.indexed.contains(folder),
-                            counting: setup.counting.contains(folder), estimate: setup.estimates[folder],
-                            chosen: Binding(
-                                get: { chosen.contains(folder) },
-                                set: { on in
-                                    if on { chosen.insert(folder) } else { chosen.remove(folder) }
-                                    if on { Task { await setup.estimate(folder) } }
-                                }),
-                            depth: Binding(
-                                get: { depths[folder] ?? .speech },
-                                set: { depths[folder] = $0 }))
-                        if folder != offered.last { Divider() }
+            VStack(alignment: .leading, spacing: 12) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(chosen, id: \.self) { folder in
+                            FolderRow(
+                                folder: folder, indexed: setup.indexed.contains(folder),
+                                counting: setup.counting.contains(folder), estimate: setup.estimates[folder]
+                            ) { chosen.removeAll { $0 == folder } }
+                            if folder != chosen.last { Divider() }
+                        }
+                        if chosen.isEmpty {
+                            Text("No folders yet")
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        }
                     }
+                    .padding(.horizontal, 12)
                 }
-                .padding(.horizontal, 12)
+                .frame(maxHeight: 200)
+                .fixedSize(horizontal: false, vertical: true)
+                .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 10))
+                HStack(spacing: 8) {
+                    // Named by their path alone: asking macOS for a folder's name or icon can read inside it.
+                    ForEach(Self.suggested.filter { !chosen.contains($0) }, id: \.self) { folder in
+                        Button {
+                            add([folder])
+                        } label: {
+                            Label((folder as NSString).lastPathComponent, systemImage: "plus")
+                        }
+                    }
+                    Spacer()
+                    Button("Add Folder…", action: addFolder)
+                }
+                Label("macOS asks once whether Sift It may read each folder you add.", systemImage: "hand.raised")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             }
-            .frame(maxHeight: 252)
-            .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 10))
-            Button("Add Folder…", action: addFolder)
         }
-        // Counting what's chosen is what has macOS ask about protected folders: on the page that explains them.
-        .task(id: offered) { await estimateChosen() }
     }
 
     private var readyPage: some View {
         PageLayout(
             symbol: "checkmark.seal", title: "You're all set",
             text: firstPass.map {
-                """
-                In \($0.words), every file can be found by its name and words. All of it takes \($0.all), and you \
-                can search meanwhile.
-                """
+                "Exact search works in \($0.exact), and all of it takes \($0.all). You can search meanwhile."
             } ?? "You can search while Sift It indexes."
         ) {
             VStack(alignment: .leading, spacing: 14) {
@@ -207,11 +228,12 @@ private struct WelcomeView: View {
                 Label {
                     Text(
                         """
-                        When indexing starts, macOS asks whether sift-it, Sift It's indexer, may read your \
-                        Documents, Desktop and Downloads. Allow it, so those files can be found.
+                        Sift It lives in the menu bar: \(Image(systemName: "sparkle.magnifyingglass")). Its settings \
+                        are there, and in the search: the gear, or ⌘,. Can't see the icon on a full menu bar? Open \
+                        Sift It again, and the search opens.
                         """)
                 } icon: {
-                    Image(systemName: "hand.raised")
+                    Image(systemName: "menubar.rectangle")
                 }
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -225,30 +247,24 @@ private struct WelcomeView: View {
         }
     }
 
-    /// Searching works from the start: by words within seconds, and by more as each milestone is reached.
+    /// Searching works from the start: Exact within seconds to minutes, then Embeddings and Transcribed.
     private var indexingPage: some View {
-        let indexer = engine.indexer
-        let words = indexer?.rounds.first { $0.round == .words }?.state == .done
+        let indexer = engine.indexer.flatMap { $0.rounds.isEmpty ? nil : $0 } ?? expected
         let text =
             !setup.inBackground
             ? "Indexing in the background is off. Turn it on in Settings, and Sift It reads your files."
-            : (words ? "Every file" : "In a few seconds, every file")
-                + " can be found by its name and words. The rest follows, a milestone at a time."
+            : "The bar fills once for each phase: Exact, Embeddings, then Transcribed. You can search all along."
         return PageLayout(symbol: "magnifyingglass", title: "You can search now", text: text) {
             if setup.inBackground {
-                MilestoneList(indexer: indexer.flatMap { $0.rounds.isEmpty ? nil : $0 } ?? expected)
+                PhaseProgress(indexer: indexer)
                     .padding(.top, 4)
             }
         }
     }
 
-    /// The milestones the chosen folders will have, before the indexer says how far each is.
+    /// The phases the chosen folders will go through, before the indexer says how far each is.
     private var expected: IndexerStatus {
-        let rounds = Set(
-            chosen.flatMap { folder in
-                (setup.estimates[folder]?.rounds ?? []).map(\.round)
-                    .filter { (depths[folder] ?? .speech).rounds.contains($0) }
-            })
+        let rounds = Set(chosen.flatMap { setup.estimates[$0]?.rounds.map(\.round) ?? [] })
         return IndexerStatus(
             pid: 0, state: .starting,
             rounds: Round.all.filter { $0 == .words || rounds.contains($0) }.map {
@@ -291,12 +307,7 @@ private struct WelcomeView: View {
 
     private func begin() async {
         await setup.look()
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let usual = ["Documents", "Desktop", "Downloads", "Pictures", "Movies", "Music"]
-            .map { home.appendingPathComponent($0).path }
-            .filter { FileManager.default.fileExists(atPath: $0) }
-        offered = usual + setup.indexed.filter { !usual.contains($0) }
-        chosen = Set(setup.indexed.isEmpty ? Array(usual.prefix(3)) : setup.indexed)
+        chosen = setup.indexed
         inBackground = setup.inBackground || !Setup.isDone
         atLogin = Setup.opensAtLogin || !Setup.isDone
     }
@@ -306,20 +317,12 @@ private struct WelcomeView: View {
         withAnimation(.easeInOut(duration: 0.2)) { page = next }
     }
 
-    /// Counts the chosen folders that aren't indexed yet, one after the other.
-    private func estimateChosen() async {
-        for folder in offered where chosen.contains(folder) && !setup.indexed.contains(folder) {
-            await setup.estimate(folder)
-        }
-    }
-
     private func start() {
         starting = true
         problem = nil
         Task {
             do {
-                try await setup.read(depths.filter { chosen.contains($0.key) })
-                try await setup.index(chosen)
+                try await setup.index(Set(chosen))
                 try await setup.indexInBackground(inBackground)
                 try Setup.openAtLogin(atLogin)
                 Setup.isDone = true
@@ -331,6 +334,14 @@ private struct WelcomeView: View {
         }
     }
 
+    /// Adds folders, and counts each: reading it is when macOS asks about it, right after it was chosen.
+    private func add(_ folders: [String]) {
+        for folder in folders where !chosen.contains(folder) {
+            chosen.append(folder)
+            if !setup.indexed.contains(folder) { Task { await setup.estimate(folder) } }
+        }
+    }
+
     private func addFolder() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -338,22 +349,18 @@ private struct WelcomeView: View {
         panel.allowsMultipleSelection = true
         panel.prompt = "Add"
         guard panel.runModal() == .OK else { return }
-        for folder in panel.urls.map(\.path) where !offered.contains(folder) {
-            offered.append(folder)
-            chosen.insert(folder)
-            Task { await setup.estimate(folder) }
-        }
+        add(panel.urls.map(\.path))
     }
 
-    /// How long indexing the chosen folders that aren't indexed yet takes, once each is counted: until every file can be
-    /// found by its words, and all of it.
-    private var firstPass: (words: String, all: String)? {
+    /// How long indexing the chosen folders that aren't indexed yet takes, once each is counted: until Exact search
+    /// works, and all of it.
+    private var firstPass: (exact: String, all: String)? {
         let new = chosen.filter { !setup.indexed.contains($0) }
         let counted = new.compactMap { setup.estimates[$0] }
         guard !counted.isEmpty, counted.count == new.count else { return nil }
-        let words = counted.flatMap(\.rounds).filter { $0.round == .words }.reduce(0) { $0 + $1.seconds }
-        let all = counted.reduce(0) { $0 + $1.seconds(at: depths[$1.folder] ?? .speech) }
-        return (Format.duration(words), Format.duration(all))
+        let exact = counted.reduce(0) { $0 + $1.seconds(of: .exact) }
+        let all = counted.reduce(0) { $0 + $1.seconds }
+        return (Format.duration(exact), Format.duration(all))
     }
 }
 
@@ -400,112 +407,70 @@ private struct Feature: View {
     }
 }
 
-/// A folder to choose, with what indexing it takes; opened, what each milestone takes. A huge one offers to leave out
-/// the slow milestones.
+/// A folder chosen, with its files and what indexing it takes, and a way to take it out again.
 private struct FolderRow: View {
     let folder: String
     let indexed: Bool
     let counting: Bool
     let estimate: Estimate?
-    @Binding var chosen: Bool
-    @Binding var depth: Depth
-    @State private var open = false
-
-    /// Long enough to offer reading it less deeply.
-    static let huge: Double = 3600
+    let remove: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Toggle(isOn: $chosen) {
-                    HStack(spacing: 10) {
-                        Image(nsImage: NSWorkspace.shared.icon(forFile: folder))
-                            .resizable()
-                            .frame(width: 22, height: 22)
-                        Text(FileManager.default.displayName(atPath: folder))
-                        Spacer()
-                        if chosen, !indexed, counting, estimate == nil {
-                            ProgressView().controlSize(.mini)
-                        }
-                        Text(summary)
-                            .font(.callout.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .toggleStyle(.checkbox)
-                Button {
-                    withAnimation(.easeInOut(duration: 0.15)) { open.toggle() }
-                } label: {
-                    Image(systemName: "chevron.right")
-                        .rotationEffect(.degrees(open ? 90 : 0))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 16, height: 16)
-                        .contentShape(.rect)
-                }
-                .buttonStyle(.borderless)
-                .opacity(milestones == nil ? 0 : 1)
-                .disabled(milestones == nil)
-                .accessibilityLabel(open ? "Hide the milestones" : "Show the milestones")
+        HStack(spacing: 10) {
+            Image(nsImage: NSWorkspace.shared.icon(forFile: folder))
+                .resizable()
+                .frame(width: 22, height: 22)
+            Text(FileManager.default.displayName(atPath: folder))
+            Spacer()
+            if !indexed, counting, estimate == nil {
+                ProgressView().controlSize(.mini)
             }
-            if open, let milestones {
-                VStack(alignment: .leading, spacing: 5) {
-                    ForEach(milestones.rounds, id: \.round) { round in
-                        let kept = depth.rounds.contains(round.round)
-                        HStack {
-                            Text(Milestones.capitalized(round.round.milestone))
-                            Spacer()
-                            Text(kept ? Format.duration(round.seconds) : "Left out")
-                                .monospacedDigit()
-                        }
-                        .foregroundStyle(kept ? .secondary : .tertiary)
-                    }
-                    if milestones.seconds >= Self.huge {
-                        Picker("Read", selection: $depth) {
-                            ForEach(Depth.allCases.reversed(), id: \.self) { depth in
-                                Text("\(name(depth)) · \(Format.duration(milestones.seconds(at: depth)))").tag(depth)
-                            }
-                        }
-                        .fixedSize()
-                        .padding(.top, 2)
-                    }
-                }
-                .font(.callout)
-                .padding(.leading, 52)
-                .padding(.trailing, 22)
-                .padding(.bottom, 4)
+            Text(summary)
+                .font(.callout.monospacedDigit())
+                .foregroundStyle(.secondary)
+            Button(action: remove) {
+                Image(systemName: "minus.circle.fill")
+                    .foregroundStyle(.secondary)
             }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Remove \(FileManager.default.displayName(atPath: folder))")
         }
-        .padding(.vertical, 6)
-        // A huge folder shows what it takes, and the offer, as soon as it's counted.
-        .onChange(of: estimate, initial: true) { _, estimate in
-            if let estimate, estimate.seconds >= Self.huge { open = true }
-        }
-    }
-
-    /// The estimate to show the milestones of: a chosen folder that's counted and readable, with work to do.
-    private var milestones: Estimate? {
-        guard chosen, !indexed, let estimate, !estimate.unreadable, !estimate.rounds.isEmpty else { return nil }
-        return estimate
+        .padding(.vertical, 8)
     }
 
     private var summary: String {
-        guard chosen else { return "" }
         if indexed { return "Indexed" }
         guard let estimate else { return counting ? "Counting…" : "" }
         if estimate.unreadable { return "Not readable yet" }
         let files = estimate.files == 1 ? "1 file" : "\(estimate.files.formatted()) files"
-        return "\(files) · \(Format.duration(estimate.seconds(at: depth)))"
+        return "\(files) · \(Format.duration(estimate.seconds))"
     }
+}
 
-    private func name(_ depth: Depth) -> String {
-        switch depth {
-        case .speech: "Everything"
-        case .meaning: "All but what's said"
-        case .words: "Names and words only"
+/// A model, what it's for and its size, and whether it's there.
+struct ModelRow: View {
+    let model: Setup.Model
+    let ready: Bool
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(systemName: ready ? "checkmark.circle.fill" : "circle.dashed")
+                .foregroundStyle(ready ? AnyShapeStyle(.green) : AnyShapeStyle(.tertiary))
+                .frame(width: 16)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(model.name).fontWeight(.medium)
+                Text(model.about)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text(megabytes(model.bytes))
+                .font(.callout.monospacedDigit())
+                .foregroundStyle(.secondary)
         }
     }
 }
 
-private func megabytes(_ bytes: Int64) -> String {
+func megabytes(_ bytes: Int64) -> String {
     ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
 }

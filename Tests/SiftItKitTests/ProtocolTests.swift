@@ -113,55 +113,10 @@ let indexerLine = """
     #expect(estimate.rounds.count == 5)
     #expect(estimate.rounds[1] == RoundEstimate(round: .text, total: 20000, unit: "passages", seconds: 330))
     #expect(estimate.byKind["video"] == 900)
-    #expect(estimate.seconds(at: .speech) == 850)
-    // Speech runs beside the rest, on its own chip: leaving it out saves nothing here.
-    #expect(estimate.seconds(at: .meaning) == 850)
-    #expect(estimate.seconds(at: .words) == 40)
-}
-
-@Test func aFolderReadLessDeeplyHasARuleOfItsOwn() throws {
-    let rules = try JSONDecoder().decode(
-        [JSON].self,
-        from: Data(
-            """
-            [{"path":"*.psd","depth":"words"},{"path":"~/Movies/**","depth":"meaning"},
-             {"path":"~/Movies/**","video":{"keep_every_s":10}}]
-            """.utf8))
-    let movies = "/Users/me/Movies"
-    let music = "/Users/me/Music"
-    let lower = Depth.rules(rules, reading: [movies: .words, music: .meaning], home: "/Users/me")
-    #expect(
-        JSON.array(lower).text
-            == #"[{"depth":"words","path":"*.psd"},{"path":"~/Movies/**","video":{"keep_every_s":10}},"#
-            + #"{"depth":"words","path":"~/Movies/**"},{"depth":"meaning","path":"~/Music/**"}]"#)
-    // Read in full again, each loses its rule; the rules it didn't make stay.
-    let full = Depth.rules(lower, reading: [movies: .speech, music: .speech], home: "/Users/me")
-    #expect(full == [rules[0], rules[2]])
-}
-
-@Test func milestonesSayWhatCanBeFoundAlready() throws {
-    guard case .indexer(let status)? = Event.decode(Data(indexerLine.utf8)) else {
-        Issue.record("not an indexer event")
-        return
-    }
-    #expect(Milestones.next(status) == "Searchable by words · documents by meaning 60% · about 12 min")
-    #expect(
-        Milestones.notYet(status)
-            == "Documents: 60% by meaning · Photos: 0% looked at · Recordings: 40% written down")
-    let states = status.rounds.map { Milestones.state(of: $0, in: status) }
-    #expect(states == [nil, "60% · about 12 min", "Waiting for its turn", "40% · waiting for a charger"])
-
-    let starting = IndexerStatus(
-        pid: 7, state: .indexing,
-        rounds: [
-            RoundStatus(round: .words, state: .running, done: 0, total: 40),
-            RoundStatus(round: .speech, state: .queued),
-        ])
-    #expect(Milestones.next(starting) == "Every file by its name and words 0%")
-    #expect(Milestones.state(of: starting.rounds[0], in: starting) == "Starting…")
-    let done = IndexerStatus(pid: 7, state: .idle, rounds: [RoundStatus(round: .words, state: .done)])
-    #expect(Milestones.next(done) == nil)
-    #expect(Milestones.notYet(done) == nil)
+    #expect(estimate.seconds(of: .exact) == 40)
+    #expect(estimate.seconds(of: .embeddings) == 440)
+    // The sound round listens after speech, so it finishes with Transcribed.
+    #expect(estimate.seconds(of: .transcribed) == 535)
 }
 
 @Test func placesAreSaidAsInRaycast() throws {

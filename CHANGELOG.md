@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.5.1] — 2026-10-25
+
+One language, one flow: the app says how far indexing is in three words, everywhere, and asks for nothing before
+you've chosen it.
+
+- **Exact, Embeddings, Transcribed.** Exact finds files by their name and exact words, text in screenshots and scans
+  included; Embeddings finds documents, photos, sounds and video scenes by what they mean; Transcribed finds what's
+  said in recordings and videos. The welcome window, the menu bar, the search panel and the settings use these words,
+  and explain each in the same sentence. The engine's six rounds map onto them in one place (SiftItKit's Phases).
+- **One bar that fills three times**, labelled with the phase at work and its time left, in the welcome window and in
+  Settings → Index. The menu bar says "Exact ✓ · Embeddings 60% · about 12 min", with a second line only when
+  something waits. The search panel's quiet line names only the phases that aren't done.
+- **The same words in every setting:** Search with embeddings (General), Index up to Exact, Embeddings or Transcribed,
+  for each folder (Folders), and On battery: Exact only, Everything or Pause (Index).
+- **The models, by name:** EmbeddingGemma 2 by Google DeepMind for embeddings (865 MB), and Parakeet Ultra for
+  transcription (632 MB). Text in screenshots and scans is read by macOS itself.
+- **Choosing folders asks nothing unasked.** No folder is ticked or read beforehand: Add Folder…, or a click on
+  Documents, Desktop or Downloads, adds one and counts it (its files and one time), and that's when macOS asks, once,
+  as Sift It. The background indexer reads the folder as Sift It too, so there's no second prompt. The per-folder
+  breakdown and the depth drop-down are gone from the welcome window (the depth is in Settings → Folders).
+- **Where things are:** the welcome window says Sift It lives in the menu bar, that its settings are there and in the
+  search, and that opening Sift It again opens the search when the icon hides on a full menu bar. The search panel
+  has a gear for the settings, beside ⌘,.
+
 ## [0.5.0] — 2026-10-25
 
 Progress you can read: what can be found already, and what comes next. With sift-it 0.4.0, which indexes in rounds:

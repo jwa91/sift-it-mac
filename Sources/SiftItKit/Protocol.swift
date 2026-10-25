@@ -114,47 +114,11 @@ public struct RoundState: RawRepresentable, Codable, Hashable, Sendable {
     public static let waiting = RoundState(rawValue: "waiting")
 }
 
-/// How deep files are read (`reading.depth`, and per folder through `reading.rules`): each depth adds rounds.
-public enum Depth: String, CaseIterable, Sendable {
-    /// Names and words, the text on screenshots and scans too: no model.
-    case words
-    /// What text, pictures and sound mean too.
-    case meaning
-    /// What's said in recordings too: everything (the default).
-    case speech
-
-    /// The rounds a file is read in at this depth.
-    public var rounds: Set<Round> {
-        switch self {
-        case .words: [.words, .ocr]
-        case .meaning: [.words, .text, .ocr, .pictures, .sound]
-        case .speech: Set(Round.all)
-        }
-    }
-
-    /// `reading.rules` with each of these folders read as deep as given: a rule of its own, `{"path": "~/Movies/**",
-    /// "depth": "words"}`, or none when it's read in full. Every other rule stays as it is.
-    public static func rules(
-        _ rules: [JSON], reading depths: [String: Depth], home: String = NSHomeDirectory()
-    ) -> [JSON] {
-        var rules = rules
-        for (folder, depth) in depths.sorted(by: { $0.key < $1.key }) {
-            let path = JSON.string(Format.shortPath(folder, home: home) + "/**")
-            rules.removeAll {
-                guard case .object(let rule) = $0 else { return false }
-                return rule["path"] == path && Set(rule.keys).isSubset(of: ["path", "depth"])
-            }
-            if depth != .speech { rules.append(.object(["path": path, "depth": .string(depth.rawValue)])) }
-        }
-        return rules
-    }
-}
-
 /// What a search is by.
 public enum Mode: String, Sendable {
-    /// The full-text index alone: no model, answered at once.
+    /// Exact: the full-text index alone, no model, answered at once.
     case words
-    /// Meaning too, with the words still counting.
+    /// Embeddings too, with the exact words still counting.
     case meaning
 }
 
@@ -518,11 +482,11 @@ public struct Estimate: Decodable, Sendable, Equatable {
         case byKind = "by_kind"
     }
 
-    /// About how long it takes when it's read only as deep as `depth`. Rounds side by side can't be told apart here,
-    /// so it's their sum, or the whole when that's less.
-    public func seconds(at depth: Depth) -> Double {
-        let kept = rounds.filter { depth.rounds.contains($0.round) }
-        guard kept.count < rounds.count else { return seconds }
+    /// About how long a phase takes: its rounds', or the whole when that's less (rounds side by side can't be told
+    /// apart here).
+    public func seconds(of phase: Phase) -> Double {
+        let transcribing = rounds.contains { $0.round == .speech }
+        let kept = rounds.filter { Phase.of($0.round, transcribing: transcribing) == phase }
         return min(seconds, kept.reduce(0) { $0 + $1.seconds })
     }
 }

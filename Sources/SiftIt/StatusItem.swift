@@ -1,5 +1,6 @@
-// Sift It in the menu bar: its icon says whether the index is up to date (and how far the next milestone is while it
-// works), and its menu says what can be found already, opens the search, pauses indexing, and holds the settings.
+// Sift It in the menu bar: its icon says whether the index is up to date (and how far the phase at work is while it
+// works), and its menu says how far indexing is in its three phases, opens the search, pauses indexing, and holds the
+// settings.
 
 import AppKit
 import Observation
@@ -41,8 +42,8 @@ final class StatusItem: NSObject, NSMenuDelegate {
 
     private func update() {
         let indexer = engine.indexer
-        let next = indexer.flatMap { $0.isWorking ? $0.rounds.first { $0.state != .done } : nil }
-        item.button?.title = next?.progress.map { " \(Milestones.percent($0))%" } ?? ""
+        let current = indexer.flatMap { $0.isWorking ? $0.currentPhase : nil }
+        item.button?.title = current.map { " \(Phases.percent($0.progress))%" } ?? ""
         item.button?.appearsDisabled = !engine.isConnected || indexer?.state == .paused
         if menuIsOpen { fill() }
     }
@@ -80,7 +81,8 @@ final class StatusItem: NSObject, NSMenuDelegate {
         menu.addItem(quit)
     }
 
-    /// How the index is doing: what can be found already and the next milestone, and what the rest waits for.
+    /// How the index is doing: the phases done and the one at work, "Exact ✓ · Embeddings 60% · about 12 min", and
+    /// under it what the rest waits for, when something does.
     private func statusLines() -> [String] {
         switch engine.connection {
         case .missing: return ["sift-it isn't installed"]
@@ -98,13 +100,12 @@ final class StatusItem: NSObject, NSMenuDelegate {
             first = engine.status.map { "Up to date: \($0.stats.files.formatted()) files" } ?? "Up to date"
         default:
             first =
-                Milestones.next(indexer)
+                Phases.summary(indexer)
                 ?? (indexer.state == .syncing ? "Comparing the folders with the index…" : "Indexing…")
         }
-        let second = indexer.state == .paused ? "Indexing is paused" : indexer.detail
-        if let second { return [first, second] }
+        if let detail = indexer.detail { return [first, detail] }
         if engine.meaning == .unavailable {
-            return [first, "Words only: " + (engine.meaningError ?? "search by meaning is unavailable")]
+            return [first, "Exact only: " + (engine.meaningError ?? "embeddings are unavailable")]
         }
         return [first]
     }
