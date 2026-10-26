@@ -81,9 +81,19 @@ cask "sift-it" do
   app "Sift It.app"
   binary "#{appdir}/Sift It.app/Contents/Helpers/sift-it"
 
-  # An upgrade takes the background indexer away too; the app puts it back when it opens.
-  uninstall launchctl: ["local.sift-it.indexer", "local.sift-it.engine"],
-            quit:      "dev.sift-it.mac"
+  # An upgrade takes the background indexer away too; the app puts it back when it opens. They're this user's
+  # LaunchAgents, so launchctl in its own domain is enough: \`uninstall launchctl:\` also looks in the system's, with
+  # sudo, and asks for a password.
+  uninstall quit:   "dev.sift-it.mac",
+            script: {
+              executable:   "/bin/sh",
+              args:         [
+                "-c",
+                "for agent in indexer engine; do launchctl bootout gui/\$(id -u)/local.sift-it.\$agent; " \\
+                "rm -f ~/Library/LaunchAgents/local.sift-it.\$agent.plist; done 2>/dev/null; true",
+              ],
+              must_succeed: false,
+            }
 
   # The models stay: they're in the shared Hugging Face cache (~/.cache/huggingface/hub), which other apps may use.
   zap trash: [
